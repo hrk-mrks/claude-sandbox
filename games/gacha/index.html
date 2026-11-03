@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>無限ガチャ</title>
+<style>
+  :root {
+    --bg: #12101c; --panel: #221e33; --text: #f6f3ff; --sub: #a39bbd;
+    --accent: #8b5cf6; --r3: #7fb3ff; --r4: #d6dced; --r5: #ffd54a; --r6: #ff5bd4;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body {
+    background: radial-gradient(ellipse at top, #2a2347 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    -webkit-user-select: none; user-select: none;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+  body.shake { animation: screenshake .45s; }
+  @keyframes screenshake {
+    0%,100%{transform:translate(0,0)} 10%{transform:translate(-8px,4px)} 20%{transform:translate(8px,-6px)}
+    30%{transform:translate(-6px,-4px)} 40%{transform:translate(6px,6px)} 50%{transform:translate(-4px,2px)}
+    60%{transform:translate(4px,-2px)} 70%{transform:translate(-2px,2px)} 80%{transform:translate(2px,-1px)} }
+  .app { width: 100%; max-width: 480px; display: flex; flex-direction: column; height: 100%; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  header a { color: inherit; text-decoration: none; font-size: 22px; }
+  .stones { background: var(--panel); border-radius: 999px; padding: 6px 12px; font-weight: bold; font-size: 15px; }
+  .stones small { color: var(--sub); font-weight: normal; }
+  .iconbtn { background: var(--panel); border: 0; color: var(--text); border-radius: 999px; width: 36px; height: 36px; font-size: 16px; }
+
+  .stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; min-height: 0; }
+  .machine {
+    width: 180px; height: 180px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff8 0%, #fff0 25%), conic-gradient(from 0deg, #8b5cf6, #ec4899, #f59e0b, #10b981, #3b82f6, #8b5cf6);
+    box-shadow: 0 0 40px #8b5cf688, inset 0 -20px 40px #0006;
+    animation: spin 12s linear infinite, float 3s ease-in-out infinite;
+    display: flex; align-items: center; justify-content: center; font-size: 72px;
+  }
+  .machine span { animation: spin 12s linear infinite reverse; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes float { 0%,100%{margin-top:0} 50%{margin-top:-12px} }
+  .rates { font-size: 12px; color: var(--sub); margin-top: 18px; text-align: center; line-height: 1.6; }
+  .rates b { color: var(--text); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 10px 0; }
+  .stat { background: var(--panel); border-radius: 10px; padding: 8px 4px; text-align: center; font-size: 12px; }
+  .stat b { display: block; font-size: 20px; }
+  .stat.r3 { color: var(--r3); } .stat.r4 { color: var(--r4); } .stat.r5 { color: var(--r5); }
+  .stat.r6 { background: linear-gradient(135deg,#ff5bd4,#ffd54a,#5bffb0,#5bb0ff); color: #000; }
+
+  .buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .buttons button {
+    border: 0; border-radius: 14px; padding: 16px 8px; font-size: 17px; font-weight: bold; color: #fff;
+    background: linear-gradient(135deg, #6d4bd8, #9b5cf6); box-shadow: 0 6px 0 #4a2fa0;
+  }
+  .buttons button.ten { background: linear-gradient(135deg, #e0417f, #ff7a45); box-shadow: 0 6px 0 #a3275b; }
+  .buttons button:active { transform: translateY(4px); box-shadow: none; }
+  .buttons button:disabled { opacity: .4; }
+  .buttons small { display: block; font-weight: normal; font-size: 12px; opacity: .85; }
+
+  /* ===== 演出オーバーレイ ===== */
+  #overlay { position: fixed; inset: 0; background: #06050c; display: none; align-items: center; justify-content: center; z-index: 100; overflow: hidden; }
+  #overlay.show { display: flex; }
+  #overlay.bg3 { background: radial-gradient(circle, #1e3a6d 0%, #000 70%); }
+  #overlay.bg4 { background: radial-gradient(circle, #3b4a6b 0%, #000 70%); }
+  #overlay.bg5 { background: radial-gradient(circle, #6b4a00 0%, #000 70%); }
+  #overlay.bg6 { background: radial-gradient(circle, #4a0a5e 0%, #000 70%); }
+  .rays { position: absolute; width: 200vmax; height: 200vmax; left: 50%; top: 50%; translate: -50% -50%; opacity: 0; transition: opacity .3s;
+    background: repeating-conic-gradient(from 0deg, #fff2 0deg 6deg, #fff0 6deg 18deg); animation: spin 8s linear infinite; }
+  .rays.r5 { background: repeating-conic-gradient(from 0deg, #ffd54a44 0deg 6deg, #0000 6deg 18deg); }
+  .rays.r6 { background: conic-gradient(#ff5bd4, #ffd54a, #5bffb0, #5bb0ff, #c45bff, #ff5bd4); opacity: 0; mix-blend-mode: screen; animation: spin 4s linear infinite; }
+  .rays.on { opacity: .7; }
+  .rays.r6.on { opacity: .55; }
+
+  .orb { position: absolute; width: 150px; height: 150px; border-radius: 50%; top: -200px; left: calc(50% - 75px);
+    background: radial-gradient(circle at 35% 30%, #fff 0%, var(--orb, #cfd8e3) 35%, #0006 100%);
+    box-shadow: 0 0 30px var(--orb, #cfd8e3), 0 0 80px var(--orb, #cfd8e3); display: none; }
+  .orb.drop { display: block; animation: drop .6s cubic-bezier(.3,1.4,.6,1) forwards; }
+  @keyframes drop { to { top: calc(50% - 75px); } }
+  .orb.shake1 { display: block; top: calc(50% - 75px); animation: oshake .12s infinite; }
+  .orb.shake2 { display: block; top: calc(50% - 75px); animation: oshake2 .07s infinite; }
+  @keyframes oshake { 0%,100%{transform:rotate(-4deg)} 50%{transform:rotate(4deg)} }
+  @keyframes oshake2 { 0%,100%{transform:rotate(-10deg) scale(1.05)} 50%{transform:rotate(10deg) scale(1.08)} }
+  .orb.rainbow { background: conic-gradient(#ff5bd4, #ffd54a, #5bffb0, #5bb0ff, #c45bff, #ff5bd4); box-shadow: 0 0 40px #fff, 0 0 100px #ff5bd4; }
+  .orb.burst { display: block; top: calc(50% - 75px); animation: burst .35s ease-out forwards; }
+  @keyframes burst { to { transform: scale(4); opacity: 0; } }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  .flash.on { animation: flash .5s ease-out; }
+  @keyframes flash { 0%{opacity:1} 100%{opacity:0} }
+
+  .card { position: absolute; width: 240px; padding: 22px 16px 18px; border-radius: 20px; text-align: center; display: none;
+    background: linear-gradient(160deg, #2b2742, #15121f); border: 3px solid var(--c, #fff); box-shadow: 0 0 40px var(--c, #fff); }
+  .card.show { display: block; animation: cardin .6s cubic-bezier(.2,1.6,.4,1) forwards; }
+  @keyframes cardin { 0%{transform:scale(0) rotate(-30deg);opacity:0} 100%{transform:scale(1) rotate(0);opacity:1} }
+  .card.r6 { border-image: linear-gradient(135deg,#ff5bd4,#ffd54a,#5bffb0,#5bb0ff) 1; border-radius: 0; box-shadow: 0 0 60px #ff5bd4, 0 0 120px #ffd54a66; }
+  .card .mon { font-size: 96px; line-height: 1.1; filter: drop-shadow(0 0 16px var(--c, #fff)); animation: float 2s ease-in-out infinite; }
+  .card .stars { font-size: 20px; color: var(--c, #fff); letter-spacing: 2px; margin-top: 6px; }
+  .card.r6 .stars { background: linear-gradient(90deg,#ff5bd4,#ffd54a,#5bffb0,#5bb0ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card .name { font-size: 22px; font-weight: bold; margin-top: 4px; }
+  .card .elem { font-size: 13px; color: var(--sub); margin-top: 2px; }
+  .card .new { position: absolute; top: -12px; right: -10px; background: #ff3b3b; color: #fff; font-size: 12px; font-weight: bold; padding: 4px 8px; border-radius: 999px; transform: rotate(10deg); }
+  .rarity-label { position: absolute; top: 18%; font-size: 28px; font-weight: 900; letter-spacing: 4px; opacity: 0; color: var(--c,#fff); text-shadow: 0 0 20px var(--c,#fff); }
+  .rarity-label.on { animation: labelin .6s ease-out forwards; }
+  @keyframes labelin { 0%{opacity:0;transform:scale(3)} 100%{opacity:1;transform:scale(1)} }
+
+  .prog { position: absolute; top: calc(16px + env(safe-area-inset-top)); left: 16px; color: var(--sub); font-size: 14px; }
+  .skip { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 16px; background: #fff2; border: 1px solid #fff4; color: #fff; border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+  .tap { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom)); color: var(--sub); font-size: 14px; animation: blink 1.2s infinite; }
+  @keyframes blink { 50%{opacity:.3} }
+
+  /* 10連サマリー */
+  .grid { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 16px; gap: 12px; }
+  .grid.show { display: flex; }
+  .grid h2 { margin: 0; font-size: 18px; }
+  .grid .cells { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; max-width: 400px; }
+  .cell { background: #1a1727; border: 2px solid var(--c,#fff); border-radius: 12px; padding: 8px 2px; text-align: center; font-size: 11px; animation: cardin .4s backwards; }
+  .cell .mon { font-size: 32px; }
+  .cell .stars { color: var(--c,#fff); font-size: 10px; }
+  .cell.r6 { background: linear-gradient(135deg,#4a1f5e,#5e3d00); box-shadow: 0 0 14px #ff5bd4; }
+
+  /* 集計モーダル */
+  #results { position: fixed; inset: 0; background: #000d; display: none; align-items: center; justify-content: center; z-index: 200; padding: 16px; }
+  #results.show { display: flex; }
+  .modal { background: var(--panel); border-radius: 20px; padding: 20px; width: 100%; max-width: 420px; max-height: 90vh; overflow: auto; -webkit-user-select: text; user-select: text; }
+  .modal h2 { margin: 0 0 4px; font-size: 20px; text-align: center; }
+  .modal p.sub { color: var(--sub); font-size: 13px; text-align: center; margin: 0 0 14px; }
+  .modal table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .modal th, .modal td { padding: 8px 4px; text-align: right; border-bottom: 1px solid #fff1; }
+  .modal th:first-child, .modal td:first-child { text-align: left; }
+  .bar { height: 6px; background: #fff1; border-radius: 3px; overflow: hidden; margin-top: 3px; }
+  .bar > div { height: 100%; }
+  .got { margin-top: 12px; font-size: 13px; line-height: 1.8; }
+  .got h3 { font-size: 14px; margin: 10px 0 2px; }
+  .modal button { width: 100%; margin-top: 16px; border: 0; border-radius: 12px; padding: 14px; font-size: 16px; font-weight: bold; color: #fff; background: var(--accent); }
+  #toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: #000c; color: #fff; padding: 8px 16px; border-radius: 999px; font-size: 14px; opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 300; }
+  #toast.on { opacity: 1; }
+  canvas#fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 150; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <a href="../../" aria-label="ゲーム一覧へ">‹</a>
+    <h1>💎 無限ガチャ</h1>
+    <div class="stones"><small>💎</small> <span id="stones">1000</span></div>
+    <button class="iconbtn" id="sound" aria-label="サウンド切替">🔊</button>
+    <button class="iconbtn" id="reset" aria-label="リセット">↺</button>
+  </header>
+
+  <div class="stage">
+    <div class="machine"><span>🥚</span></div>
+    <div class="rates">
+      排出率 <b style="color:var(--r6)">★6 2%</b> ・ <b style="color:var(--r5)">★5 10%</b> ・ <b style="color:var(--r4)">★4 28%</b> ・ <b style="color:var(--r3)">★3 60%</b><br>
+      10連は <b>★4以上1体確定</b>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat r6">★6<b id="c6">0</b></div>
+    <div class="stat r5">★5<b id="c5">0</b></div>
+    <div class="stat r4">★4<b id="c4">0</b></div>
+    <div class="stat r3">★3<b id="c3">0</b></div>
+  </div>
+
+  <div class="buttons">
+    <button id="one">単発ガチャ<small>💎10</small></button>
+    <button id="ten" class="ten">10連ガチャ（11体）<small>💎100</small></button>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="rays" id="rays"></div>
+  <div class="flash" id="flash"></div>
+  <div class="orb" id="orb"></div>
+  <div class="rarity-label" id="rlabel"></div>
+  <div class="card" id="card"></div>
+  <div class="grid" id="grid"><h2>10連結果</h2><div class="cells" id="cells"></div><div style="color:var(--sub);font-size:13px">タップで閉じる</div></div>
+  <div class="prog" id="prog"></div>
+  <button class="skip" id="skip">スキップ ⏩</button>
+  <div class="tap" id="tap">タップで次へ</div>
+</div>
+<canvas id="fx"></canvas>
+
+<div id="results"><div class="modal" id="modal"></div></div>
+<div id="toast"></div>
+
+<script>
+// ===== データ =====
+const RAR = {
+  3: { label: "★★★",    name: "ノーマル",    color: "#7fb3ff", rate: 60 },
+  4: { label: "★★★★",   name: "レア",        color: "#d6dced", rate: 28 },
+  5: { label: "★★★★★",  name: "スーパーレア", color: "#ffd54a", rate: 10 },
+  6: { label: "★★★★★★", name: "ウルトラレア", color: "#ff5bd4", rate: 2 },
+};
+const ELEM = { 火: "🔥", 水: "💧", 木: "🌿", 光: "✨", 闇: "🌑" };
+const M = (r, list) => list.map(([mon, name, el]) => ({ r, mon, name, el }));
+const MONSTERS = [
+  ...M(3, [["🐛","ケムシ","木"],["🐀","ドブネズミ","闇"],["🐸","ガマガエル","水"],["🐌","カタツムリ","水"],["🦇","コウモリ","闇"],["🐍","ヘビ","木"],
+           ["🐝","キラービー","火"],["🐙","タコ","水"],["🦀","カニ","水"],["🐺","オオカミ","闇"],["🐗","イノシシ","火"],["🦎","トカゲ","木"],
+           ["🐔","コッコ","光"],["🐑","ヒツジ","光"],["🦔","ハリネズミ","木"]]),
+  ...M(4, [["🦊","キツネ忍者","火"],["🐯","タイガー","火"],["🦅","イーグル","光"],["🐻","ベアナイト","木"],["🦈","メガシャーク","水"],
+           ["🐘","マンモス","水"],["🦂","デスサソリ","闇"],["🐲","ドラゴンの子","火"],["🦉","フクロウ賢者","光"],["🐎","疾風の馬","光"],
+           ["🦍","ゴリラ将軍","木"],["🐊","ワニ戦士","水"]]),
+  ...M(5, [["🦄","ユニコーン","光"],["🐉","ドラゴン","火"],["🔥","炎の精霊","火"],["🧜","セイレーン","水"],["🧙","大魔道士","闇"],
+           ["🦅","フェニックス","火"],["👹","鬼神","闇"],["🌊","海神リヴァイア","水"],["🌲","森の守護者","木"],["⚡","雷獣","光"]]),
+  ...M(6, [["👑","魔王ベルゼス","闇"],["🌟","光の女神ルミナ","光"],["🌑","闇の覇王ノクス","闇"],["🐉","神龍シェンロン","火"],
+           ["🌈","虹の精霊王","光"],["🔱","海皇ポセイド","水"],["🌳","世界樹ユグド","木"]]),
+];
+const INITIAL = 1000, COST1 = 10, COST10 = 100;
+
+// ===== 状態 =====
+let S = load() || fresh();
+function fresh() { return { stones: INITIAL, counts: { 3: 0, 4: 0, 5: 0, 6: 0 }, got: {}, pulls: 0 }; }
+function load() { try { const j = JSON.parse(localStorage.getItem("gacha-v1")); return j && j.stones !== undefined ? j : null; } catch { return null; } }
+function save() { try { localStorage.setItem("gacha-v1", JSON.stringify(S)); } catch {} }
+
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+let busy = false, skipAll = false, tapResolve = null, soundOn = true;
+
+function renderTop() {
+  $("stones").textContent = S.stones;
+  for (const r of [3,4,5,6]) $("c" + r).textContent = S.counts[r];
+  $("one").disabled = busy || S.stones < COST1;
+  $("ten").disabled = busy || S.stones < COST10;
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); setTimeout(() => t.classList.remove("on"), 1500); }
+
+// ===== 抽選 =====
+function rollRarity(min = 3) {
+  const pool = [3,4,5,6].filter(r => r >= min);
+  const total = pool.reduce((a, r) => a + RAR[r].rate, 0);
+  let x = Math.random() * total;
+  for (const r of pool) { x -= RAR[r].rate; if (x < 0) return r; }
+  return pool[pool.length - 1];
+}
+function rollMonster(r) { const c = MONSTERS.filter(m => m.r === r); return c[Math.floor(Math.random() * c.length)]; }
+function draw(n) {
+  const res = [];
+  for (let i = 0; i < n; i++) res.push(rollMonster(rollRarity()));
+  if (n >= 10 && !res.some(m => m.r >= 4)) res[n - 1] = rollMonster(rollRarity(4)); // ★4以上確定
+  return res;
+}
+
+// ===== サウンド（WebAudio で合成） =====
+let actx = null;
+function audio() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} } if (actx && actx.state === "suspended") actx.resume(); return actx; }
+function tone(freq, t0, dur, type = "sine", vol = 0.2) {
+  const a = audio(); if (!a || !soundOn) return;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, a.currentTime + t0);
+  g.gain.setValueAtTime(0, a.currentTime + t0);
+  g.gain.linearRampToValueAtTime(vol, a.currentTime + t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + t0 + dur);
+  o.connect(g).connect(a.destination); o.start(a.currentTime + t0); o.stop(a.currentTime + t0 + dur + 0.05);
+}
+const SFX = {
+  drop: () => tone(220, 0, 0.15, "triangle"),
+  shake: () => { for (let i = 0; i < 6; i++) tone(120 + i * 15, i * 0.1, 0.08, "square", 0.08); },
+  burst: r => { tone(80, 0, 0.3, "sawtooth", 0.25); if (r >= 5) tone(160, 0, 0.4, "sawtooth", 0.2); },
+  reveal: r => {
+    const seq = { 3: [523], 4: [523, 659], 5: [523, 659, 784, 1046], 6: [523, 659, 784, 1046, 1318, 1568, 2093] }[r];
+    seq.forEach((f, i) => tone(f, i * 0.09, r >= 5 ? 0.5 : 0.25, r >= 6 ? "square" : "triangle", 0.18));
+    if (r >= 6) seq.forEach((f, i) => tone(f / 2, i * 0.09 + 0.05, 0.6, "sawtooth", 0.08));
+  },
+};
+
+// ===== パーティクル =====
+const cv = $("fx"), cx = cv.getContext("2d");
+let parts = [], fxRunning = false;
+function resize() { cv.width = innerWidth * devicePixelRatio; cv.height = innerHeight * devicePixelRatio; cx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); }
+addEventListener("resize", resize); resize();
+const RAINBOW = ["#ff5bd4", "#ffd54a", "#5bffb0", "#5bb0ff", "#c45bff", "#ff8a5b"];
+function burstFx(n, colors, spread = 12, gravity = 0.25) {
+  const x = innerWidth / 2, y = innerHeight / 2;
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = (Math.random() * 0.7 + 0.3) * spread;
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2, life: 1, decay: 0.008 + Math.random() * 0.012,
+      color: colors[Math.floor(Math.random() * colors.length)], size: 4 + Math.random() * 8, rot: Math.random() * 6, vr: (Math.random() - .5) * .3, shape: Math.random() < .5 ? 0 : 1, g: gravity });
+  }
+  if (!fxRunning) { fxRunning = true; requestAnimationFrame(fxLoop); }
+}
+function confettiFx(n, colors) {
+  for (let i = 0; i < n; i++) parts.push({ x: Math.random() * innerWidth, y: -20, vx: (Math.random() - .5) * 2, vy: 2 + Math.random() * 3, life: 1, decay: 0.004,
+    color: colors[Math.floor(Math.random() * colors.length)], size: 6 + Math.random() * 6, rot: Math.random() * 6, vr: (Math.random() - .5) * .2, shape: 1, g: 0.02 });
+  if (!fxRunning) { fxRunning = true; requestAnimationFrame(fxLoop); }
+}
+function fxLoop() {
+  cx.clearRect(0, 0, innerWidth, innerHeight);
+  parts = parts.filter(p => p.life > 0 && p.y < innerHeight + 40);
+  for (const p of parts) {
+    p.x += p.vx; p.y += p.vy; p.vy += p.g; p.vx *= 0.99; p.life -= p.decay; p.rot += p.vr;
+    cx.save(); cx.globalAlpha = Math.max(0, p.life); cx.fillStyle = p.color; cx.translate(p.x, p.y); cx.rotate(p.rot);
+    if (p.shape) cx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); else { cx.beginPath(); cx.arc(0, 0, p.size / 2, 0, 7); cx.fill(); }
+    cx.restore();
+  }
+  if (parts.length) requestAnimationFrame(fxLoop); else fxRunning = false;
+}
+
+// ===== 演出 =====
+const ov = $("overlay"), orb = $("orb"), rays = $("rays"), card = $("card"), rlabel = $("rlabel"), flash = $("flash");
+function waitTap() { return new Promise(r => { tapResolve = r; }); }
+ov.addEventListener("click", e => { if (e.target === $("skip")) return; if (tapResolve) { const r = tapResolve; tapResolve = null; r(); } });
+$("skip").addEventListener("click", () => { skipAll = true; if (tapResolve) { const r = tapResolve; tapResolve = null; r(); } });
+
+function setOrbColor(r) {
+  orb.classList.remove("rainbow");
+  // 確定演出: 玉の色でレア度の下限を示す（★3は白、★4は銀、★5は金、★6は虹）
+  const col = { 3: "#cfd8e3", 4: "#9fb4d8", 5: "#ffd54a" }[r];
+  if (r === 6) orb.classList.add("rainbow"); else orb.style.setProperty("--orb", col);
+}
+function resetOverlay() {
+  orb.className = "orb"; rays.className = "rays"; card.className = "card"; rlabel.className = "rarity-label"; flash.className = "flash";
+  ov.className = "show"; $("grid").classList.remove("show"); $("tap").style.display = "none";
+}
+
+async function revealOne(m, idx, total) {
+  const r = m.r, color = RAR[r].color;
+  resetOverlay();
+  $("prog").textContent = total > 1 ? `${idx + 1} / ${total}` : "";
+  const isNew = !S.got[m.mon + m.name];
+  // 集計はここで確定させる（スキップしても漏れない）
+  S.counts[r]++; S.got[m.mon + m.name] = (S.got[m.mon + m.name] || 0) + 1; S.pulls++; save(); renderTop();
+
+  if (!skipAll) {
+    // 1. 落下
+    setOrbColor(3); orb.classList.add("drop"); SFX.drop();
+    await sleep(650);
+    // 2. 震え（レア度が高いほど途中で色が変わる）
+    orb.classList.remove("drop"); orb.classList.add("shake1"); SFX.shake();
+    await sleep(700);
+    if (r >= 4) { setOrbColor(4); orb.classList.remove("shake1"); orb.classList.add("shake2"); SFX.shake(); await sleep(600); }
+    if (r >= 5) { setOrbColor(5); rays.classList.add("r5", "on"); ov.classList.add("bg5"); SFX.shake(); burstFx(30, ["#ffd54a", "#fff"], 6, 0.05); await sleep(700); }
+    if (r >= 6) { setOrbColor(6); rays.className = "rays r6 on"; ov.classList.add("bg6"); SFX.shake(); burstFx(60, RAINBOW, 8, 0.05); await sleep(900); }
+    // 3. 爆発
+    orb.className = "orb burst" + (r === 6 ? " rainbow" : ""); flash.classList.add("on"); SFX.burst(r);
+    burstFx(r === 6 ? 220 : r === 5 ? 140 : r === 4 ? 70 : 40, r === 6 ? RAINBOW : [color, "#fff"], r >= 5 ? 16 : 10);
+    if (r >= 5) { document.body.classList.add("shake"); setTimeout(() => document.body.classList.remove("shake"), 500); if (navigator.vibrate) navigator.vibrate(r === 6 ? [80, 40, 80, 40, 200] : 80); }
+    await sleep(350);
+  }
+  // 4. カード
+  ov.classList.add("bg" + r);
+  if (r >= 5 && !rays.classList.contains("on")) rays.className = "rays " + (r === 6 ? "r6" : "r5") + " on";
+  card.style.setProperty("--c", color);
+  card.className = "card show r" + r;
+  card.innerHTML = `${isNew ? '<div class="new">NEW!</div>' : ""}<div class="mon">${m.mon}</div><div class="stars">${RAR[r].label}</div><div class="name">${m.name}</div><div class="elem">${ELEM[m.el]} ${m.el}属性 ・ ${RAR[r].name}</div>`;
+  rlabel.style.setProperty("--c", color); rlabel.textContent = RAR[r].name; rlabel.classList.add("on");
+  SFX.reveal(r);
+  if (r === 6) confettiFx(150, RAINBOW); else if (r === 5) confettiFx(60, ["#ffd54a", "#fff3b0"]);
+  if (skipAll) { await sleep(r >= 5 ? 700 : 250); return; }
+  $("tap").style.display = "block";
+  await waitTap();
+}
+
+async function showGrid(list) {
+  resetOverlay(); ov.className = "show"; $("prog").textContent = ""; $("skip").style.display = "none";
+  const cells = $("cells"); cells.innerHTML = "";
+  list.forEach((m, i) => {
+    const d = document.createElement("div");
+    d.className = "cell r" + m.r; d.style.setProperty("--c", RAR[m.r].color); d.style.animationDelay = (i * 0.05) + "s";
+    d.innerHTML = `<div class="mon">${m.mon}</div><div class="stars">${RAR[m.r].label}</div><div>${m.name}</div>`;
+    cells.appendChild(d);
+  });
+  $("grid").classList.add("show");
+  const best = Math.max(...list.map(m => m.r));
+  if (best === 6) confettiFx(120, RAINBOW); else if (best === 5) confettiFx(40, ["#ffd54a"]);
+  await waitTap();
+}
+
+async function pull(n) {
+  if (busy) return;
+  const cost = n === 1 ? COST1 : COST10;
+  if (S.stones < cost) { toast("石が足りません"); return; }
+  audio();
+  busy = true; skipAll = false;
+  S.stones -= cost; save(); renderTop();
+  const list = draw(n === 1 ? 1 : 11);
+  $("skip").style.display = n === 1 ? "none" : "block";
+  for (let i = 0; i < list.length; i++) await revealOne(list[i], i, list.length);
+  if (list.length > 1) await showGrid(list);
+  ov.className = ""; parts = [];
+  busy = false; renderTop();
+  if (S.stones < COST1) showResults();
+}
+
+// ===== 集計 =====
+function showResults() {
+  const total = S.pulls || 1;
+  const rows = [6, 5, 4, 3].map(r => {
+    const c = S.counts[r], pct = (c / total * 100).toFixed(1);
+    return `<tr><td style="color:${RAR[r].color}">${RAR[r].label}<br><small style="color:var(--sub)">${RAR[r].name}</small></td><td>${c}体</td><td>${pct}%<br><small style="color:var(--sub)">理論値 ${RAR[r].rate}%</small></td></tr>
+      <tr><td colspan="3" style="padding:0 0 6px;border:0"><div class="bar"><div style="width:${pct}%;background:${RAR[r].color}"></div></div></td></tr>`;
+  }).join("");
+  const list = r => Object.entries(S.got).map(([k, n]) => ({ m: MONSTERS.find(x => x.mon + x.name === k), n })).filter(x => x.m && x.m.r === r)
+    .sort((a, b) => b.n - a.n).map(x => `${x.m.mon} ${x.m.name}${x.n > 1 ? " ×" + x.n : ""}`).join("、") || "なし";
+  $("modal").innerHTML = `
+    <h2>🎉 石を使い切りました！</h2>
+    <p class="sub">合計 ${total} 回 ガチャを引きました</p>
+    <table><tr><th>レア度</th><th>排出数</th><th>排出率</th></tr>${rows}</table>
+    <div class="got"><h3 style="color:var(--r6)">★6 ウルトラレア</h3>${list(6)}<h3 style="color:var(--r5)">★5 スーパーレア</h3>${list(5)}</div>
+    <button id="again">💎 石を1000個に戻してもう一度</button>`;
+  $("results").classList.add("show");
+  $("again").addEventListener("click", () => { $("results").classList.remove("show"); doReset(); });
+  confettiFx(80, RAINBOW);
+}
+function doReset() { S = fresh(); save(); renderTop(); toast("石を1000個にリセットしました"); }
+
+// ===== イベント =====
+$("one").addEventListener("click", () => pull(1));
+$("ten").addEventListener("click", () => pull(10));
+$("reset").addEventListener("click", () => { if (busy) return; if (S.pulls === 0 || confirm("石を1000個に戻しますか？\n（集計もリセットされます）")) doReset(); });
+$("sound").addEventListener("click", () => { soundOn = !soundOn; $("sound").textContent = soundOn ? "🔊" : "🔇"; });
+renderTop();
+if (S.stones < COST1 && S.pulls > 0) showResults();
+</script>
+</body>
+</html>

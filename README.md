@@ -10,8 +10,10 @@
 .
 ├── index.html              # トップページ（ゲーム一覧）
 ├── games/
-│   └── sushida/
-│       └── index.html      # 🍣 スマホ寿司打
+│   ├── sushida/
+│   │   └── index.html      # 🍣 スマホ寿司打
+│   └── gacha/
+│       └── index.html      # 💎 無限ガチャ
 ├── README.md
 └── .github/workflows/pages.yml   # main への push で GitHub Pages に自動デプロイ
 ```
@@ -21,6 +23,7 @@
 | ゲーム | パス | 概要 |
 | --- | --- | --- |
 | 🍣 スマホ寿司打 | `games/sushida/` | 60秒ローマ字タイピング。shi/si など入力ゆれ対応 |
+| 💎 無限ガチャ | `games/gacha/` | 石1000個（単発10・10連100で11体）。★3〜★6のモンスター、レア度別演出、使い切ると集計表示 |
 
 ## ゲームを追加する
 
