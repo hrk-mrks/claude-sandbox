@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>チャリ走</title>
+<style>
+  :root { --bg: #0f1a2b; --panel: #1b2a44; --text: #f5f8ff; --sub: #9fb0cc; --accent: #ffb703; }
+  * { box-sizing: border-box; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; -webkit-user-select: none; user-select: none; }
+  #game { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; touch-action: none; }
+  canvas { display: block; image-rendering: pixelated; }
+  #topbar { position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; justify-content: space-between; pointer-events: none; }
+  #topbar a, #topbar button { pointer-events: auto; background: #00000088; color: #fff; border: 1px solid #fff4; border-radius: 999px; padding: 6px 12px; font-size: 13px; text-decoration: none; }
+  #tapHint { position: absolute; bottom: calc(24px + env(safe-area-inset-bottom)); left: 0; right: 0; text-align: center; color: #fff; font-size: 15px; text-shadow: 0 1px 4px #000; animation: blink 1.2s infinite; pointer-events: none; }
+  @keyframes blink { 50% { opacity: .3; } }
+  .modal-bg { position: fixed; inset: 0; background: #000b; display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+  .modal-bg.show { display: flex; }
+  .modal { background: var(--panel); border-radius: 20px; padding: 24px 18px; width: 100%; max-width: 340px; text-align: center; }
+  .modal h2 { margin: 0 0 8px; font-size: 24px; }
+  .modal .big { font-size: 44px; font-weight: bold; color: var(--accent); }
+  .modal p { color: var(--sub); margin: 6px 0; font-size: 14px; line-height: 1.6; }
+  .modal .row { display: flex; gap: 10px; margin-top: 16px; }
+  .modal button { flex: 1; border: 0; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: bold; color: #fff; background: #3b4a6b; }
+  .modal button.primary { background: var(--accent); color: #2b1d00; }
+  .newbest { color: #ff5f8f; font-weight: bold; }
+</style>
+</head>
+<body>
+<div id="game">
+  <canvas id="cv" width="320" height="180"></canvas>
+  <div id="topbar"><a href="../../">‹ 一覧</a><button id="muteBtn">🔊</button></div>
+  <div id="tapHint" style="display:none">タップでジャンプ！</div>
+</div>
+
+<div class="modal-bg show" id="startModal"><div class="modal">
+  <h2>🚲 チャリ走</h2>
+  <p>自転車は勝手に右へ進む。<br><b>タップでジャンプ</b>、空中でもう一度タップで<b>2段ジャンプ</b>。<br>穴とブロックをよけて、どこまで走れるか！</p>
+  <p id="bestStart"></p>
+  <div class="row"><button class="primary" id="startBtn">スタート</button></div>
+</div></div>
+<div class="modal-bg" id="overModal"><div class="modal">
+  <h2>💥 クラッシュ！</h2>
+  <div class="big" id="finalDist">0 m</div>
+  <p id="finalInfo"></p>
+  <div class="row"><button id="toTop">一覧へ</button><button class="primary" id="retry">もう一度</button></div>
+</div></div>
+
+<script>
+// ===== 定数 =====
+const W = 320, H = 180, GROUND_Y = 150, CELL = 22;
+const GRAVITY = 0.42, JUMP_V = -7.6, JUMP2_V = -6.8, MAX_FALL = 9;
+const PX_PER_M = 12; // 12px = 1m
+const $ = id => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+let best = 0; try { best = +localStorage.getItem("charisou-best") || 0; } catch {}
+$("bestStart").textContent = best ? `ベスト記録: ${best} m` : "";
+let soundOn = true;
+
+// ===== 状態 =====
+let G = null, running = false, lastT = 0, acc = 0;
+function newGame() {
+  G = { camX: 0, speed: 3.2, dist: 0, frame: 0, solids: [], decos: [], genX: 0, lastGroundEnd: 0, crashed: 0,
+        p: { x: 60, y: GROUND_Y - 26, w: 24, h: 26, vy: 0, onGround: true, jumps: 0, pedal: 0, tilt: 0 },
+        parts: [], flash: 0, shake: 0, buildings: [] };
+  // 最初は長い平地
+  addGround(0, 520); G.genX = 520; G.lastGroundEnd = 520;
+  for (let i = 0; i < 40; i++) G.buildings.push({ x: i * 90 + Math.random() * 40, w: 30 + Math.random() * 40, h: 30 + Math.random() * 60 });
+  generate();
+}
+function addGround(x, w) { G.solids.push({ x, y: GROUND_Y, w, h: 60, kind: "ground" }); }
+function addBox(x, y, w, h) { G.solids.push({ x, y, w, h, kind: "box" }); }
+function addPlat(x, y, w) { G.solids.push({ x, y, w, h: 8, kind: "plat" }); }
+
+// ===== 地形生成（難易度は速度に応じて上がる）=====
+function generate() {
+  while (G.genX < G.camX + W * 2.5) {
+    const diff = Math.min(1, (G.speed - 3.2) / 3.5); // 0〜1
+    const r = Math.random();
+    let x = G.genX;
+    if (r < 0.28) { // 穴
+      const gap = 50 + diff * 70 + Math.random() * (30 + diff * 40);
+      const after = 140 + Math.random() * 160;
+      if (Math.random() < 0.35 + diff * 0.3) addPlat(x + gap * 0.45 - 20, GROUND_Y - 48 - Math.random() * 20, 44); // 穴の上に足場
+      addGround(x + gap, after); G.genX = x + gap + after;
+    } else if (r < 0.58) { // ブロック（1〜3個の幅、1〜2段）
+      const w = 1 + Math.floor(Math.random() * (2 + diff * 1.5)), h = Math.random() < 0.35 + diff * 0.4 ? 2 : 1;
+      const len = 60 + w * CELL + 140 + Math.random() * 120;
+      addGround(x, len); addBox(x + 60, GROUND_Y - h * CELL, w * CELL, h * CELL); G.genX = x + len;
+    } else if (r < 0.74) { // 階段
+      const steps = 2 + Math.floor(Math.random() * 2), len = 50 + steps * CELL * 2 + 160;
+      addGround(x, len);
+      for (let i = 0; i < steps; i++) addBox(x + 50 + i * CELL, GROUND_Y - (i + 1) * CELL, CELL, (i + 1) * CELL);
+      G.genX = x + len;
+    } else if (r < 0.88) { // 浮いた足場の連続
+      const n = 2 + Math.floor(Math.random() * 2);
+      let px = x + 30, y = GROUND_Y - 50;
+      const gapBelow = Math.random() < 0.5 + diff * 0.4;
+      if (!gapBelow) addGround(x, 30);
+      for (let i = 0; i < n; i++) { const w = 50 + Math.random() * 30; addPlat(px, y, w); px += w + 50 + diff * 30 + Math.random() * 20; y = Math.max(GROUND_Y - 90, Math.min(GROUND_Y - 40, y + (Math.random() - .5) * 40)); }
+      if (!gapBelow) addGround(x + 30, px - x - 30 + 60); else addGround(px - 10, 160);
+      G.genX = Math.max(px + 150, x + 200);
+    } else { // 平地
+      const len = 160 + Math.random() * 200; addGround(x, len); G.genX = x + len;
+    }
+  }
+  G.solids = G.solids.filter(s => s.x + s.w > G.camX - 100);
+}
+
+// ===== サウンド =====
+let actx = null;
+function tone(f, dur, type = "square", vol = 0.08) {
+  if (!soundOn) return;
+  try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume();
+    const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.setValueAtTime(f, actx.currentTime); o.frequency.exponentialRampToValueAtTime(f * 1.6, actx.currentTime + dur);
+    g.gain.setValueAtTime(vol, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur); o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur); } catch {}
+}
+
+// ===== 入力 =====
+function jump() {
+  if (!running || !G || G.crashed) return;
+  const p = G.p;
+  if (p.onGround) { p.vy = JUMP_V; p.onGround = false; p.jumps = 1; dust(p.x + 4, p.y + p.h, 6); tone(300, 0.12); }
+  else if (p.jumps < 2) { p.vy = JUMP2_V; p.jumps = 2; ring(p.x + p.w / 2, p.y + p.h); tone(420, 0.12); }
+}
+$("game").addEventListener("pointerdown", e => { if (e.target.closest("a, button")) return; e.preventDefault(); jump(); });
+for (const t of ["touchstart", "touchmove", "touchend"]) $("game").addEventListener(t, e => { if (!e.target.closest("a, button")) e.preventDefault(); }, { passive: false });
+addEventListener("keydown", e => { if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") { e.preventDefault(); if (!e.repeat) jump(); } });
+$("muteBtn").addEventListener("click", () => { soundOn = !soundOn; $("muteBtn").textContent = soundOn ? "🔊" : "🔇"; });
+
+// ===== 更新 =====
+function dust(x, y, n) { for (let i = 0; i < n; i++) G.parts.push({ x, y, vx: -1 - Math.random() * 2, vy: -Math.random() * 1.5, t: 0, life: 20 + Math.random() * 10, c: "#d9c7a0", r: 2 }); }
+function ring(x, y) { G.parts.push({ x, y, vx: 0, vy: 0, t: 0, life: 14, c: "#fff", ring: true }); }
+function update() {
+  const p = G.p; G.frame++;
+  if (G.crashed) { G.crashed++; p.vy = Math.min(p.vy + GRAVITY, MAX_FALL); p.y += p.vy; p.tilt += 0.25; if (G.crashed === 50) showOver(); return; }
+  G.speed = Math.min(6.8, 3.2 + G.dist / 180);
+  G.camX += G.speed; G.dist = G.camX / PX_PER_M;
+  p.x = G.camX + 60;
+  p.pedal += G.speed * 0.12;
+  // 縦移動と着地
+  p.vy = Math.min(p.vy + GRAVITY, MAX_FALL);
+  const prevBottom = p.y + p.h;
+  p.y += p.vy; p.onGround = false;
+  for (const s of G.solids) {
+    if (p.x + p.w <= s.x || p.x >= s.x + s.w) continue;
+    if (p.vy >= 0 && prevBottom <= s.y + 0.01 && p.y + p.h >= s.y) { // 上に着地
+      if (!p.onGround && prevBottom < s.y - 2) { dust(p.x + 4, s.y, 4); G.shake = p.vy > 6 ? 3 : 0; }
+      p.y = s.y - p.h; p.vy = 0; p.onGround = true; p.jumps = 0;
+    }
+  }
+  // 横からの衝突（箱・足場の側面・地面の壁）
+  for (const s of G.solids) {
+    if (s.kind !== "box") continue; // 側面衝突は箱だけ（足場は下から抜けられる）
+    const hitX = p.x + p.w > s.x + 2 && p.x + p.w < s.x + G.speed + 6, hitY = p.y + p.h > s.y + 4 && p.y < s.y + s.h;
+    if (hitX && hitY) { crash(); return; }
+  }
+  if (p.y > H + 30) { crash(true); return; }
+  G.parts = G.parts.filter(q => (q.t++, q.x += q.vx, q.y += q.vy, q.t < q.life));
+  if (G.shake > 0) G.shake--;
+  generate();
+}
+function crash(fell) {
+  G.crashed = 1; G.p.vy = fell ? 2 : -6; G.flash = 8; G.shake = 8;
+  if (navigator.vibrate) navigator.vibrate([60, 40, 120]); tone(120, 0.4, "sawtooth", 0.15);
+  for (let i = 0; i < 16; i++) G.parts.push({ x: G.p.x + 12, y: G.p.y + 13, vx: (Math.random() - .7) * 6, vy: -Math.random() * 6, t: 0, life: 40, c: ["#ff5f5f", "#ffb703", "#fff"][i % 3], r: 3 });
+}
+function showOver() {
+  running = false; const d = Math.floor(G.dist); const isBest = d > best;
+  if (isBest) { best = d; try { localStorage.setItem("charisou-best", best); } catch {} }
+  $("finalDist").textContent = `${d} m`;
+  $("finalInfo").innerHTML = (isBest ? `<span class="newbest">🎉 ベスト更新！</span><br>` : "") + `ベスト ${best} m ・ 最高速度 ${(G.speed * 60 / PX_PER_M * 3.6).toFixed(0)} km/h`;
+  $("overModal").classList.add("show");
+}
+
+// ===== 描画 =====
+function draw() {
+  const cam = G.camX, p = G.p, t = Math.min(1, G.dist / 600); // 距離で空の色が夕焼けへ
+  ctx.save();
+  if (G.shake > 0) ctx.translate((Math.random() - .5) * G.shake, (Math.random() - .5) * G.shake);
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, lerpColor("#5ec8ff", "#2a2f6b", t)); sky.addColorStop(1, lerpColor("#dff6ff", "#ff9a5c", t));
+  ctx.fillStyle = sky; ctx.fillRect(-5, -5, W + 10, H + 10);
+  // 太陽
+  ctx.fillStyle = lerpColor("#fff6b0", "#ff7a3d", t); ctx.beginPath(); ctx.arc(250 - t * 60, 40 + t * 50, 14, 0, 7); ctx.fill();
+  // 遠景の山
+  ctx.fillStyle = lerpColor("#9fd3c7", "#4a3b6b", t);
+  for (let i = -1; i < 5; i++) { const mx = ((i * 120 - cam * 0.15) % 600 + 600) % 600 - 120; ctx.beginPath(); ctx.moveTo(mx, GROUND_Y); ctx.lineTo(mx + 60, 70 + (i % 2) * 20); ctx.lineTo(mx + 120, GROUND_Y); ctx.fill(); }
+  // ビル
+  ctx.fillStyle = lerpColor("#6b8fb3", "#1c1d3a", t);
+  for (const b of G.buildings) { const bx = ((b.x - cam * 0.4) % 3600 + 3600) % 3600 - 100; if (bx > W) continue; ctx.fillRect(bx, GROUND_Y - b.h, b.w, b.h);
+    ctx.fillStyle = "#ffe08a66"; for (let wy = GROUND_Y - b.h + 6; wy < GROUND_Y - 6; wy += 10) for (let wx = bx + 4; wx < bx + b.w - 4; wx += 9) if ((wx * 7 + wy) % 5 < 3) ctx.fillRect(wx, wy, 4, 5); ctx.fillStyle = lerpColor("#6b8fb3", "#1c1d3a", t); }
+  // 地面・障害物
+  for (const s of G.solids) {
+    const sx = s.x - cam; if (sx > W || sx + s.w < 0) continue;
+    if (s.kind === "ground") { ctx.fillStyle = "#6b4a2b"; ctx.fillRect(sx, s.y, s.w, s.h); ctx.fillStyle = "#7ccf5a"; ctx.fillRect(sx, s.y, s.w, 6); ctx.fillStyle = "#5aa83f"; for (let gx = Math.floor(sx / 12) * 12; gx < sx + s.w; gx += 12) if (gx >= sx) ctx.fillRect(gx, s.y + 6, 6, 2); }
+    else if (s.kind === "box") { for (let by = 0; by < s.h; by += CELL) for (let bx = 0; bx < s.w; bx += CELL) { ctx.fillStyle = "#c9872b"; ctx.fillRect(sx + bx, s.y + by, CELL, CELL); ctx.fillStyle = "#e8a84a"; ctx.fillRect(sx + bx + 2, s.y + by + 2, CELL - 4, CELL - 4); ctx.fillStyle = "#8a5a1a"; ctx.fillRect(sx + bx + 5, s.y + by + 5, CELL - 10, 2); ctx.fillRect(sx + bx + 5, s.y + by + CELL - 7, CELL - 10, 2); } }
+    else { ctx.fillStyle = "#4e6b2e"; ctx.fillRect(sx, s.y, s.w, s.h); ctx.fillStyle = "#9bd36a"; ctx.fillRect(sx, s.y, s.w, 3); }
+  }
+  // パーティクル
+  for (const q of G.parts) { ctx.globalAlpha = 1 - q.t / q.life; if (q.ring) { ctx.strokeStyle = q.c; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(q.x - cam, q.y, 6 + q.t * 1.5, 3 + q.t * 0.5, 0, 0, 7); ctx.stroke(); } else { ctx.fillStyle = q.c; ctx.fillRect(q.x - cam, q.y, q.r, q.r); } }
+  ctx.globalAlpha = 1;
+  // 自転車とライダー
+  drawBike(p.x - cam, p.y, p);
+  // スピード線
+  if (G.speed > 4.5 && !G.crashed) { ctx.strokeStyle = "#ffffff55"; ctx.lineWidth = 1; for (let i = 0; i < 5; i++) { const ly = 20 + ((i * 37 + G.frame * 3) % 140), lx = (i * 73 + G.frame * 11) % W; ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(lx + 12 + G.speed * 3, ly); ctx.stroke(); } }
+  if (G.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${G.flash / 10})`; ctx.fillRect(0, 0, W, H); G.flash--; }
+  ctx.restore();
+  // HUD
+  ctx.fillStyle = "#00000055"; ctx.fillRect(0, 0, W, 16);
+  ctx.fillStyle = "#fff"; ctx.font = "bold 10px monospace"; ctx.textBaseline = "top";
+  ctx.fillText(`${Math.floor(G.dist)} m`, 6, 3); ctx.fillText(`BEST ${best} m`, 100, 3); ctx.fillText(`${(G.speed * 60 / PX_PER_M * 3.6).toFixed(0)} km/h`, 230, 3);
+}
+function drawBike(x, y, p) {
+  ctx.save(); ctx.translate(x + 12, y + 13);
+  if (G.crashed) ctx.rotate(p.tilt); else ctx.rotate(p.onGround ? 0 : Math.max(-0.25, Math.min(0.25, p.vy * 0.04)));
+  const wr = 6, a = p.pedal;
+  // 車輪
+  for (const wx of [-7, 7]) { ctx.strokeStyle = "#222"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(wx, 7, wr, 0, 7); ctx.stroke(); ctx.strokeStyle = "#999"; ctx.lineWidth = 1; for (let k = 0; k < 3; k++) { ctx.beginPath(); ctx.moveTo(wx, 7); ctx.lineTo(wx + Math.cos(a + k * 2.1) * wr, 7 + Math.sin(a + k * 2.1) * wr); ctx.stroke(); } }
+  // フレーム
+  ctx.strokeStyle = "#e63946"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-7, 7); ctx.lineTo(-2, -1); ctx.lineTo(6, -1); ctx.lineTo(7, 7); ctx.moveTo(-2, -1); ctx.lineTo(0, 6); ctx.lineTo(6, -1); ctx.moveTo(0, 6); ctx.lineTo(7, 7); ctx.stroke();
+  ctx.strokeStyle = "#333"; ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(8, -5); ctx.moveTo(-2, -1); ctx.lineTo(-4, -4); ctx.stroke(); // ハンドル/サドル
+  // ペダルと脚
+  const px = Math.cos(a) * 3, py = 6 + Math.sin(a) * 3;
+  ctx.strokeStyle = "#2b5fd9"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-3, -5); ctx.lineTo(px - 1, py - 2); ctx.lineTo(px, py); ctx.stroke();
+  // 体
+  ctx.strokeStyle = "#2ec4b6"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-3, -5); ctx.lineTo(3, -11); ctx.stroke(); // 胴
+  ctx.strokeStyle = "#ffcc99"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(3, -11); ctx.lineTo(8, -5); ctx.stroke(); // 腕
+  ctx.fillStyle = "#ffcc99"; ctx.beginPath(); ctx.arc(5, -14, 3.5, 0, 7); ctx.fill(); // 頭
+  ctx.fillStyle = "#ffb703"; ctx.beginPath(); ctx.arc(5, -15, 4, Math.PI, 0); ctx.fill(); // ヘルメット
+  ctx.restore();
+}
+function lerpColor(a, b, t) { const pa = [1, 3, 5].map(i => parseInt(a.substr(i, 2), 16)), pb = [1, 3, 5].map(i => parseInt(b.substr(i, 2), 16)); return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * t)).join(",")})`; }
+
+// ===== ループ / レイアウト =====
+function loop(now) {
+  if (!running) return;
+  acc += Math.min(100, now - lastT); lastT = now;
+  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; if (!running) break; }
+  draw(); requestAnimationFrame(loop);
+}
+function fit() { const s = Math.min(innerWidth / W, innerHeight / H); cv.style.width = Math.floor(W * s) + "px"; cv.style.height = Math.floor(H * s) + "px"; }
+addEventListener("resize", fit); fit();
+ctx.imageSmoothingEnabled = false;
+
+function start() { newGame(); $("startModal").classList.remove("show"); $("overModal").classList.remove("show"); $("tapHint").style.display = "block"; setTimeout(() => $("tapHint").style.display = "none", 2500); running = true; lastT = performance.now(); acc = 0; requestAnimationFrame(loop); tone(500, 0.1); }
+$("startBtn").addEventListener("click", start);
+$("retry").addEventListener("click", start);
+$("toTop").addEventListener("click", () => location.href = "../../");
+newGame(); draw();
+</script>
+<script>
+// iOS Safari のダブルタップ/ピンチズーム防止
+(function () {
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+})();
+</script>
+</body>
+</html>
