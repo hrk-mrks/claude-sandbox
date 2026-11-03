@@ -6,7 +6,7 @@
 <title>ジャンプアドベンチャー</title>
 <style>
   :root { --bg: #101522; --panel: #1c2437; --text: #f4f6ff; --sub: #97a3c2; --accent: #ff5f5f; --gold: #ffd54a; }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { box-sizing: border-box; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; margin: 0; overflow: hidden; }
   body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; -webkit-user-select: none; user-select: none; touch-action: none; }
 
@@ -36,7 +36,7 @@
   canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; }
   #controls { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: flex-end; padding: 12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); pointer-events: none; }
   .pad { display: flex; gap: 10px; pointer-events: auto; }
-  .btn { width: 72px; height: 72px; border-radius: 50%; background: #ffffff22; border: 2px solid #ffffff44; color: #fff; font-size: 28px; display: flex; align-items: center; justify-content: center; touch-action: none; }
+  .btn { touch-action: none; width: 72px; height: 72px; border-radius: 50%; background: #ffffff22; border: 2px solid #ffffff44; color: #fff; font-size: 28px; display: flex; align-items: center; justify-content: center; touch-action: none; }
   .btn.jump { width: 88px; height: 88px; background: #ff5f5f66; border-color: #ff5f5f; font-size: 22px; font-weight: bold; }
   .btn.on { background: #ffffff66; }
   .btn.jump.on { background: #ff5f5fcc; }
@@ -183,6 +183,8 @@ document.querySelectorAll(".btn").forEach(b => {
   const on = e => { e.preventDefault(); keys[k] = true; b.classList.add("on"); };
   const off = e => { e.preventDefault(); keys[k] = false; b.classList.remove("on"); };
   b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("pointerleave", off);
+  // タッチの既定動作（ダブルタップズーム・長押し選択）を完全に止める
+  for (const t of ["touchstart", "touchmove", "touchend", "touchcancel"]) b.addEventListener(t, e => e.preventDefault(), { passive: false });
 });
 const KEYMAP = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right", Space: "jump", ArrowUp: "jump", KeyW: "jump" };
 addEventListener("keydown", e => { const k = KEYMAP[e.code]; if (k) { keys[k] = true; e.preventDefault(); } });
@@ -419,6 +421,7 @@ function fit() {
   cv.style.marginTop = portrait ? "calc(44px + env(safe-area-inset-top))" : "0";
 }
 addEventListener("resize", fit);
+for (const t of ["touchstart", "touchmove", "touchend"]) $("game").addEventListener(t, e => { if (!e.target.closest("button")) e.preventDefault(); }, { passive: false });
 ctx.imageSmoothingEnabled = false;
 
 // ===================== 画面遷移 =====================
@@ -429,6 +432,22 @@ $("overSelect").addEventListener("click", toSelect);
 $("toNext").addEventListener("click", () => startStage(G.i + 1));
 $("overRetry").addEventListener("click", () => startStage(G.i));
 renderSelect();
+</script>
+
+<script>
+// iOS Safari のダブルタップ/ピンチズーム防止（user-scalable=no は iOS では無効）
+(function () {
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+  let last = 0;
+  document.addEventListener("touchend", e => {
+    const now = Date.now();
+    // ボタン類は click を殺さないよう除外（CSS の touch-action: manipulation で対応）
+    const interactive = e.target.closest("button, a, input, .btn, [data-tap]");
+    if (!interactive && now - last < 350) e.preventDefault();
+    last = now;
+  }, { passive: false });
+})();
 </script>
 </body>
 </html>

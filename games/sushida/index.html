@@ -14,7 +14,7 @@
     --ok: #6ed37a;
     --ng: #ff5566;
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; touch-action: manipulation; }
   html, body { height: 100%; margin: 0; }
   body {
     background: var(--bg);
@@ -92,7 +92,7 @@
     </div>
   </header>
 
-  <div class="panel" id="panel">
+  <div class="panel" id="panel" data-tap>
     <div class="sushi">🍣</div>
     <div class="word">タップしてスタート</div>
     <div class="kana">ローマ字で入力。英字キーボードに切り替えてください</div>
@@ -301,6 +301,22 @@ document.addEventListener("keydown", e => {
 
 $("startBtn").addEventListener("click", start);
 panel.addEventListener("click", () => { if (state) kb.focus(); });
+</script>
+
+<script>
+// iOS Safari のダブルタップ/ピンチズーム防止（user-scalable=no は iOS では無効）
+(function () {
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+  let last = 0;
+  document.addEventListener("touchend", e => {
+    const now = Date.now();
+    // ボタン類は click を殺さないよう除外（CSS の touch-action: manipulation で対応）
+    const interactive = e.target.closest("button, a, input, .btn, [data-tap]");
+    if (!interactive && now - last < 350) e.preventDefault();
+    last = now;
+  }, { passive: false });
+})();
 </script>
 </body>
 </html>

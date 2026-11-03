@@ -9,7 +9,7 @@
     --bg: #12101c; --panel: #221e33; --text: #f6f3ff; --sub: #a39bbd;
     --accent: #8b5cf6; --r3: #7fb3ff; --r4: #d6dced; --r5: #ffd54a; --r6: #ff5bd4;
   }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { box-sizing: border-box; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; margin: 0; overflow: hidden; }
   body {
     background: radial-gradient(ellipse at top, #2a2347 0%, var(--bg) 60%);
@@ -172,7 +172,7 @@
   </div>
 </div>
 
-<div id="overlay">
+<div id="overlay" data-tap>
   <div class="rays" id="rays"></div>
   <div class="flash" id="flash"></div>
   <div class="orb" id="orb"></div>
@@ -416,6 +416,22 @@ $("reset").addEventListener("click", () => { if (busy) return; if (S.pulls === 0
 $("sound").addEventListener("click", () => { soundOn = !soundOn; $("sound").textContent = soundOn ? "🔊" : "🔇"; });
 renderTop();
 if (S.stones < COST1 && S.pulls > 0) showResults();
+</script>
+
+<script>
+// iOS Safari のダブルタップ/ピンチズーム防止（user-scalable=no は iOS では無効）
+(function () {
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+  let last = 0;
+  document.addEventListener("touchend", e => {
+    const now = Date.now();
+    // ボタン類は click を殺さないよう除外（CSS の touch-action: manipulation で対応）
+    const interactive = e.target.closest("button, a, input, .btn, [data-tap]");
+    if (!interactive && now - last < 350) e.preventDefault();
+    last = now;
+  }, { passive: false });
+})();
 </script>
 </body>
 </html>

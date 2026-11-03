@@ -6,7 +6,7 @@
 <title>ミニゲーム集</title>
 <style>
   :root { --bg: #1b1b1f; --panel: #2a2a30; --text: #f4f4f4; --sub: #9a9aa3; --accent: #ff6b4a; }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; touch-action: manipulation; }
   body {
     margin: 0; min-height: 100vh;
     background: var(--bg); color: var(--text);
@@ -61,5 +61,21 @@
     </a>
   </div>
 </div>
+
+<script>
+// iOS Safari のダブルタップ/ピンチズーム防止（user-scalable=no は iOS では無効）
+(function () {
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+  let last = 0;
+  document.addEventListener("touchend", e => {
+    const now = Date.now();
+    // ボタン類は click を殺さないよう除外（CSS の touch-action: manipulation で対応）
+    const interactive = e.target.closest("button, a, input, .btn, [data-tap]");
+    if (!interactive && now - last < 350) e.preventDefault();
+    last = now;
+  }, { passive: false });
+})();
+</script>
 </body>
 </html>
