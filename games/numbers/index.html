@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>数字タッチ</title>
+<style>
+  :root { --bg: #101418; --panel: #1b2229; --text: #f4f7fa; --sub: #93a1b0; --accent: #22d3ee; --ok: #34d399; --ng: #fb7185; }
+  * { box-sizing: border-box; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; -webkit-user-select: none; user-select: none; display: flex; justify-content: center; }
+  .app { width: 100%; max-width: 480px; height: 100%; display: flex; flex-direction: column; padding: 10px 14px calc(12px + env(safe-area-inset-bottom)); gap: 10px; }
+  header { display: flex; align-items: center; gap: 10px; }
+  header a { color: inherit; text-decoration: none; font-size: 22px; }
+  h1 { font-size: 18px; margin: 0; flex: 1; }
+  .hud { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .hud div { background: var(--panel); border-radius: 12px; padding: 8px; text-align: center; }
+  .hud .lbl { font-size: 11px; color: var(--sub); }
+  .hud .val { font-size: 22px; font-weight: bold; font-variant-numeric: tabular-nums; }
+  .hud .val.time { color: var(--accent); }
+  .next { text-align: center; font-size: 14px; color: var(--sub); }
+  .next b { color: var(--text); font-size: 20px; }
+
+  .grid { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(5, 1fr); gap: 8px; min-height: 0; position: relative; }
+  .cell { border: 0; border-radius: 14px; background: var(--panel); color: var(--text); font-size: clamp(26px, 8vw, 40px); font-weight: bold; font-variant-numeric: tabular-nums; box-shadow: inset 0 -4px 0 #0005; transition: transform .08s; touch-action: none; }
+  .cell:active { transform: scale(.94); }
+  .cell.done { background: #0f1a1a; color: #2f4f4f; box-shadow: none; animation: pop .25s; }
+  .cell.wrong { animation: shake .25s; background: #4a1f2b; }
+  @keyframes pop { 0%{transform:scale(1)} 40%{transform:scale(1.15);background:var(--ok);color:#000} 100%{transform:scale(1)} }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+  .overlay { position: absolute; inset: 0; background: #101418ee; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 20px; }
+  .overlay.hide { display: none; }
+  .overlay h2 { margin: 0; font-size: 24px; }
+  .overlay p { color: var(--sub); margin: 0; font-size: 14px; line-height: 1.6; }
+  .overlay .big { font-size: 52px; font-weight: bold; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .overlay .count { font-size: 96px; font-weight: 900; color: var(--accent); animation: pop .5s; }
+  .overlay button { border: 0; border-radius: 14px; padding: 16px 28px; font-size: 18px; font-weight: bold; color: #031519; background: var(--accent); margin-top: 6px; }
+  .newbest { color: var(--ok); font-weight: bold; }
+  .history { font-size: 12px; color: var(--sub); text-align: center; min-height: 16px; }
+  .rank { font-size: 14px; color: var(--sub); }
+  .rank b { color: #fbbf24; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><a href="../../" aria-label="ゲーム一覧へ">‹</a><h1>🔢 数字タッチ 1→20</h1></header>
+  <div class="hud">
+    <div><div class="lbl">タイム</div><div class="val time" id="time">0.00</div></div>
+    <div><div class="lbl">ミス</div><div class="val" id="miss">0</div></div>
+    <div><div class="lbl">ベスト</div><div class="val" id="best">--</div></div>
+  </div>
+  <div class="next">つぎは <b id="next">1</b></div>
+  <div class="grid" id="grid">
+    <div class="overlay" id="overlay">
+      <h2>🔢 数字タッチ</h2>
+      <p>バラバラに並んだ 1〜20 を<br><b>1 から順番に</b>できるだけ速くタップ！<br>ミスすると <b>+0.5秒</b> のペナルティ</p>
+      <button id="startBtn">スタート</button>
+    </div>
+  </div>
+  <div class="history" id="history"></div>
+</div>
+
+<script>
+const N = 20, PENALTY = 0.5;
+const $ = id => document.getElementById(id);
+let best = null, hist = [];
+try { best = JSON.parse(localStorage.getItem("numbers-best")); hist = JSON.parse(localStorage.getItem("numbers-hist")) || []; } catch {}
+let next = 1, miss = 0, t0 = 0, timer = null, playing = false, cells = [];
+const fmt = s => s.toFixed(2);
+function renderMeta() { $("best").textContent = best ? fmt(best) : "--"; $("history").textContent = hist.length ? "最近: " + hist.map(fmt).join(" / ") + " 秒" : ""; }
+
+// ===== サウンド =====
+let actx = null;
+function beep(f, dur = 0.06, type = "sine", vol = 0.12) {
+  try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume();
+    const o = actx.createOscillator(), g = actx.createGain(); o.type = type; o.frequency.value = f;
+    g.gain.setValueAtTime(vol, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur); } catch {}
+}
+
+function buildGrid() {
+  const nums = Array.from({ length: N }, (_, i) => i + 1);
+  for (let i = nums.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [nums[i], nums[j]] = [nums[j], nums[i]]; }
+  document.querySelectorAll(".cell").forEach(c => c.remove());
+  cells = nums.map(n => {
+    const b = document.createElement("button"); b.className = "cell"; b.textContent = n; b.dataset.n = n;
+    b.addEventListener("pointerdown", e => { e.preventDefault(); tap(b); });
+    $("grid").insertBefore(b, $("overlay"));
+    return b;
+  });
+}
+function tap(b) {
+  if (!playing || b.classList.contains("done")) return;
+  const n = +b.dataset.n;
+  if (n === next) {
+    b.classList.remove("wrong"); b.classList.add("done"); beep(400 + n * 30); next++;
+    if (navigator.vibrate) navigator.vibrate(10);
+    if (next > N) { $("next").textContent = "✓"; finish(); } else $("next").textContent = next;
+  } else {
+    miss++; $("miss").textContent = miss; beep(120, 0.15, "square"); if (navigator.vibrate) navigator.vibrate(60);
+    b.classList.remove("wrong"); void b.offsetWidth; b.classList.add("wrong");
+  }
+}
+function elapsed() { return (performance.now() - t0) / 1000 + miss * PENALTY; }
+async function start() {
+  const ov = $("overlay");
+  buildGrid(); next = 1; miss = 0; $("miss").textContent = 0; $("next").textContent = 1; $("time").textContent = "0.00";
+  // カウントダウン
+  for (const c of ["3", "2", "1", "GO!"]) { ov.innerHTML = `<div class="count">${c}</div>`; beep(c === "GO!" ? 880 : 440, 0.1); await new Promise(r => setTimeout(r, c === "GO!" ? 350 : 600)); }
+  ov.classList.add("hide"); playing = true; t0 = performance.now();
+  timer = setInterval(() => $("time").textContent = fmt(elapsed()), 31);
+}
+function finish() {
+  playing = false; clearInterval(timer);
+  const t = elapsed(); $("time").textContent = fmt(t);
+  const isBest = !best || t < best; if (isBest) best = t;
+  hist = [t, ...hist].slice(0, 5);
+  try { localStorage.setItem("numbers-best", JSON.stringify(best)); localStorage.setItem("numbers-hist", JSON.stringify(hist)); } catch {}
+  renderMeta();
+  const rank = t < 10 ? "S 神速！" : t < 14 ? "A すごい！" : t < 18 ? "B いい感じ" : t < 25 ? "C まずまず" : "D 練習あるのみ";
+  const ov = $("overlay"); ov.classList.remove("hide");
+  ov.innerHTML = `<h2>🏁 クリア！</h2><div class="big">${fmt(t)}<span style="font-size:20px"> 秒</span></div>
+    ${isBest ? '<div class="newbest">🎉 ベスト更新！</div>' : ""}
+    <div class="rank">ランク <b>${rank}</b></div>
+    <p>ミス ${miss} 回${miss ? `（+${fmt(miss * PENALTY)} 秒）` : ""} ・ ベスト ${fmt(best)} 秒</p>
+    <button id="againBtn">もう一度</button>`;
+  $("againBtn").addEventListener("click", start);
+  [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.2), i * 90));
+}
+$("startBtn").addEventListener("click", start);
+renderMeta();
+</script>
+<script>
+(function () {
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+  document.addEventListener("touchend", e => { if (e.target.closest(".cell")) e.preventDefault(); }, { passive: false });
+})();
+</script>
+</body>
+</html>
