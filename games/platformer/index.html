@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>ジャンプアドベンチャー</title>
+<style>
+  :root { --bg: #101522; --panel: #1c2437; --text: #f4f6ff; --sub: #97a3c2; --accent: #ff5f5f; --gold: #ffd54a; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; -webkit-user-select: none; user-select: none; touch-action: none; }
+
+  /* ===== ステージ選択 ===== */
+  #select { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; padding: 16px; overflow: auto; }
+  #select.hide { display: none; }
+  .wrap { width: 100%; max-width: 480px; }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  header a { color: inherit; text-decoration: none; font-size: 22px; }
+  h1 { font-size: 20px; margin: 0; }
+  p.lead { color: var(--sub); font-size: 13px; margin: 0 0 16px; }
+  .stage { display: flex; align-items: center; gap: 14px; background: var(--panel); border-radius: 16px; padding: 14px; margin-bottom: 12px; border: 2px solid transparent; }
+  .stage:active { border-color: var(--accent); }
+  .stage .thumb { width: 64px; height: 64px; border-radius: 12px; flex: none; display: flex; align-items: center; justify-content: center; font-size: 32px; }
+  .stage .t1 { background: linear-gradient(#6fd0ff, #8ee36f); } .stage .t2 { background: linear-gradient(#ff9a5c, #7a3b7a); } .stage .t3 { background: linear-gradient(#1d2a5e, #6f8dff); }
+  .stage .info { flex: 1; }
+  .stage .name { font-size: 17px; font-weight: bold; }
+  .stage .stars { color: var(--gold); font-size: 14px; letter-spacing: 2px; }
+  .stage .stars span { color: #475068; }
+  .stage .best { font-size: 12px; color: var(--sub); margin-top: 2px; }
+  .stage .clear { font-size: 22px; }
+  .howto { font-size: 12px; color: var(--sub); line-height: 1.7; margin-top: 8px; }
+
+  /* ===== ゲーム画面 ===== */
+  #game { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: flex-start; background: #000; }
+  #game.show { display: flex; }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; background: #000; }
+  #controls { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: flex-end; padding: 12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); pointer-events: none; }
+  .pad { display: flex; gap: 10px; pointer-events: auto; }
+  .btn { width: 72px; height: 72px; border-radius: 50%; background: #ffffff22; border: 2px solid #ffffff44; color: #fff; font-size: 28px; display: flex; align-items: center; justify-content: center; touch-action: none; }
+  .btn.jump { width: 88px; height: 88px; background: #ff5f5f66; border-color: #ff5f5f; font-size: 22px; font-weight: bold; }
+  .btn.on { background: #ffffff66; }
+  .btn.jump.on { background: #ff5f5fcc; }
+  #topbar { position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 12px; display: flex; gap: 8px; }
+  #topbar button { background: #00000088; color: #fff; border: 1px solid #fff4; border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+
+  /* ===== モーダル ===== */
+  .modal-bg { position: fixed; inset: 0; background: #000b; display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+  .modal-bg.show { display: flex; }
+  .modal { background: var(--panel); border-radius: 20px; padding: 22px 18px; width: 100%; max-width: 360px; text-align: center; }
+  .modal h2 { margin: 0 0 6px; font-size: 24px; }
+  .modal .big { font-size: 40px; margin: 6px 0; }
+  .modal p { color: var(--sub); margin: 4px 0; font-size: 14px; }
+  .modal .row { display: flex; gap: 10px; margin-top: 16px; }
+  .modal button { flex: 1; border: 0; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: bold; color: #fff; background: #3b4a6b; }
+  .modal button.primary { background: var(--accent); }
+  .rank { color: var(--gold); font-size: 26px; letter-spacing: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ステージ選択 -->
+<div id="select">
+  <div class="wrap">
+    <header><a href="../../" aria-label="ゲーム一覧へ">‹</a><h1>🍄 ジャンプアドベンチャー</h1></header>
+    <p class="lead">ステージを選んでスタート。★が多いほど難しい</p>
+    <div id="stages"></div>
+    <div class="howto">
+      操作: 画面左の ◀ ▶ で移動、右の JUMP でジャンプ（長押しで高く跳ぶ）。<br>
+      敵は上から踏むと倒せる。コインを集めてゴールの旗を目指そう。<br>
+      PCはカーソルキー / A・D で移動、スペース / ↑ / W でジャンプ。
+    </div>
+  </div>
+</div>
+
+<!-- ゲーム -->
+<div id="game">
+  <canvas id="cv" width="320" height="224"></canvas>
+  <div id="topbar"><button id="quit">◀ ステージ選択</button></div>
+  <div id="controls">
+    <div class="pad"><div class="btn" data-k="left">◀</div><div class="btn" data-k="right">▶</div></div>
+    <div class="pad"><div class="btn jump" data-k="jump">JUMP</div></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="clearModal"><div class="modal">
+  <h2>🏁 ステージクリア！</h2>
+  <div class="rank" id="rank"></div>
+  <div class="big" id="clearTime"></div>
+  <p id="clearInfo"></p>
+  <div class="row"><button id="toSelect">ステージ選択</button><button class="primary" id="toNext">次のステージ ▶</button></div>
+</div></div>
+<div class="modal-bg" id="overModal"><div class="modal">
+  <h2>💀 ゲームオーバー</h2>
+  <p id="overInfo"></p>
+  <div class="row"><button id="overSelect">ステージ選択</button><button class="primary" id="overRetry">もう一度</button></div>
+</div></div>
+
+<script>
+// ===================== 定数 =====================
+const T = 16, ROWS = 14, VW = 20, W = T * VW, H = T * ROWS;
+const GRAVITY = 0.36, JUMP_V = -6.4, MAX_RUN = 2.3, ACCEL = 0.18, FRICTION = 0.82, MAX_FALL = 7;
+const LIVES = 3;
+// タイル: 0空 1地面 2レンガ 3?ブロック 4使用済み 5コイン 6トゲ 8足場(上からのみ乗れる)
+const SOLID = t => t === 1 || t === 2 || t === 3 || t === 4;
+
+// ===================== ステージデータ =====================
+// 単位はすべてタイル。ground: [開始,終了) / plat: [x,y,幅] / q: [x,y] / bricks: [x,y,幅]
+// pillars: [x,高さ](地面から積む) / spikes: [x,幅](地面の上) / coins: [x,y,幅]
+// enemies: [x] または [x, 立つ行] / movers: [x,y,幅,dx,dy,移動量] / checks: [x]
+const STAGES = [
+  { name: "みどりの草原", stars: 1, theme: "day", len: 180, start: [2, 11], flag: 175,
+    ground: [[0,38],[41,72],[75,118],[122,180]],
+    q: [[12,8],[22,8],[24,8],[60,8],[95,8]], bricks: [[23,8,1],[58,8,2],[61,8,2]],
+    plat: [[44,9,4],[85,9,3],[89,7,3],[119,8,3]],
+    pillars: [[100,1],[101,2],[165,1],[166,2],[167,3],[168,4]],
+    coins: [[13,5,1],[30,9,3],[45,6,4],[64,9,3],[86,6,3],[104,9,5],[130,8,3],[150,9,4]],
+    enemies: [[30],[52],[90],[108],[140],[160]], checks: [[90]] },
+  { name: "ゆうやけの丘", stars: 2, theme: "sunset", len: 210, start: [2, 11], flag: 205,
+    ground: [[0,30],[34,60],[65,90],[95,130],[136,165],[170,210]],
+    plat: [[61,9,3],[92,8,2],[166,8,3]], movers: [[130,10,3,1,0,3]],
+    q: [[10,8],[40,8],[42,8],[75,7],[110,8],[150,8]], bricks: [[41,8,1],[76,7,2],[109,8,1],[111,8,1],[180,8,4]],
+    pillars: [[20,1],[21,2],[50,2],[100,1],[101,2],[102,3],[120,2],[145,1],[146,2],[147,3],[148,4],[195,1],[196,2],[197,3],[198,4],[199,5]],
+    spikes: [[55,3],[115,3],[155,4]],
+    coins: [[11,5,3],[36,9,4],[62,6,3],[78,4,3],[92,5,2],[112,5,3],[138,9,4],[160,8,3],[182,5,4]],
+    enemies: [[25],[45],[70],[80],[105],[125],[140],[160],[175],[185],[190]], checks: [[95],[136]] },
+  { name: "てんくうの道", stars: 3, theme: "sky", len: 240, start: [2, 11], flag: 237,
+    ground: [[0,20],[26,40],[48,60],[70,80],[92,100],[112,120],[134,150],[162,170],[185,195],[210,240]],
+    plat: [[21,9,3],[42,8,2],[45,6,2],[62,9,2],[66,7,2],[82,9,2],[86,7,2],[89,9,2],[102,8,2],[106,6,2],[109,8,2],[122,9,3],
+           [152,9,2],[156,7,2],[159,9,2],[172,9,2],[176,7,2],[180,9,2],[197,9,2],[201,7,2],[205,9,2]],
+    movers: [[127,8,3,1,0,4],[176,4,2,0,1,3]],
+    spikes: [[30,3],[52,3],[140,4],[215,3],[225,4]],
+    pillars: [[36,1],[37,2],[75,2],[96,2],[116,3],[145,1],[146,2],[165,2],[188,2],[230,1],[231,2],[232,3],[233,4],[234,5]],
+    q: [[15,8],[57,8],[117,7],[192,8]],
+    coins: [[22,6,3],[45,3,2],[63,6,2],[86,4,3],[106,3,3],[123,6,3],[156,4,3],[176,2,2],[201,4,3],[214,9,4]],
+    enemies: [[10],[28],[50],[73],[94],[114],[137],[147],[164],[190],[213],[220],[23,8],[43,7],[123,8],[153,8],[198,8]],
+    checks: [[60],[120],[185]] },
+];
+const THEMES = {
+  day:    { sky: ["#6fd0ff", "#cfefff"], hill: "#7ccf6a", hill2: "#5fb551", cloud: "#fff", ground: "#c58b4a", groundTop: "#5fcf4a" },
+  sunset: { sky: ["#ff8a5c", "#ffd36b"], hill: "#8a4a7a", hill2: "#6a3560", cloud: "#ffe0c0", ground: "#8a5a3a", groundTop: "#c9843a" },
+  sky:    { sky: ["#1d2a5e", "#6f8dff"], hill: "#4a5f9e", hill2: "#3a4a80", cloud: "#e8efff", ground: "#8c93b5", groundTop: "#d7dcf5" },
+};
+
+function buildLevel(d) {
+  const g = Array.from({ length: ROWS }, () => new Uint8Array(d.len));
+  for (const [a, b] of d.ground) for (let x = a; x < b; x++) { g[12][x] = 1; g[13][x] = 1; }
+  for (const [x, h] of d.pillars || []) for (let k = 1; k <= h; k++) g[12 - k][x] = 1;
+  for (const [x, y, w] of d.bricks || []) for (let i = 0; i < w; i++) g[y][x + i] = 2;
+  for (const [x, y] of d.q || []) g[y][x] = 3;
+  for (const [x, y, w] of d.plat || []) for (let i = 0; i < w; i++) g[y][x + i] = 8;
+  for (const [x, y, w] of d.coins || []) for (let i = 0; i < w; i++) if (!g[y][x + i]) g[y][x + i] = 5;
+  for (const [x, w] of d.spikes || []) for (let i = 0; i < w; i++) g[11][x + i] = 6;
+  const totalCoins = g.reduce((a, row) => a + row.reduce((b, t) => b + (t === 5 ? 1 : 0), 0), 0) + (d.q || []).length;
+  return { d, g, totalCoins };
+}
+
+// ===================== 保存 =====================
+let SAVE = {}; try { SAVE = JSON.parse(localStorage.getItem("platformer-v1")) || {}; } catch {}
+function saveRecord(i, time, coins, total) {
+  const r = SAVE[i] || {}; r.cleared = true; r.best = r.best ? Math.min(r.best, time) : time; r.bestCoins = Math.max(r.bestCoins || 0, coins); r.total = total;
+  SAVE[i] = r; try { localStorage.setItem("platformer-v1", JSON.stringify(SAVE)); } catch {}
+}
+
+// ===================== ステージ選択UI =====================
+const $ = id => document.getElementById(id);
+function renderSelect() {
+  $("stages").innerHTML = STAGES.map((s, i) => {
+    const r = SAVE[i];
+    const stars = "★".repeat(s.stars) + "<span>" + "★".repeat(3 - s.stars) + "</span>";
+    const best = r && r.cleared ? `ベスト ${fmt(r.best)} ・ コイン ${r.bestCoins}/${r.total}` : "未クリア";
+    return `<div class="stage" data-i="${i}"><div class="thumb t${i + 1}">${["🌳", "🌇", "☁️"][i]}</div>
+      <div class="info"><div class="name">STAGE ${i + 1}  ${s.name}</div><div class="stars">${stars}</div><div class="best">${best}</div></div>
+      <div class="clear">${r && r.cleared ? "✅" : "▶"}</div></div>`;
+  }).join("");
+  document.querySelectorAll(".stage").forEach(el => el.addEventListener("click", () => startStage(+el.dataset.i)));
+}
+const fmt = ms => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}.${String(Math.floor(ms % 1000 / 100))}`; };
+
+// ===================== 入力 =====================
+const keys = { left: false, right: false, jump: false };
+document.querySelectorAll(".btn").forEach(b => {
+  const k = b.dataset.k;
+  const on = e => { e.preventDefault(); keys[k] = true; b.classList.add("on"); };
+  const off = e => { e.preventDefault(); keys[k] = false; b.classList.remove("on"); };
+  b.addEventListener("pointerdown", on); b.addEventListener("pointerup", off); b.addEventListener("pointercancel", off); b.addEventListener("pointerleave", off);
+});
+const KEYMAP = { ArrowLeft: "left", KeyA: "left", ArrowRight: "right", KeyD: "right", Space: "jump", ArrowUp: "jump", KeyW: "jump" };
+addEventListener("keydown", e => { const k = KEYMAP[e.code]; if (k) { keys[k] = true; e.preventDefault(); } });
+addEventListener("keyup", e => { const k = KEYMAP[e.code]; if (k) { keys[k] = false; e.preventDefault(); } });
+
+// ===================== ゲーム状態 =====================
+const cv = $("cv"), ctx = cv.getContext("2d");
+let G = null, running = false, lastT = 0, acc = 0;
+
+function startStage(i) {
+  const lv = buildLevel(STAGES[i]);
+  G = { i, lv, d: lv.d, g: lv.g, lives: LIVES, coins: 0, time: 0, camX: 0, frame: 0,
+    spawn: [lv.d.start[0] * T, lv.d.start[1] * T], player: null, enemies: [], movers: [], pops: [], particles: [], dead: 0, cleared: false, msg: "" };
+  spawnEntities();
+  respawn();
+  $("select").classList.add("hide"); $("game").classList.add("show");
+  $("clearModal").classList.remove("show"); $("overModal").classList.remove("show");
+  fit(); running = true; lastT = performance.now(); acc = 0; requestAnimationFrame(loop);
+}
+function spawnEntities() {
+  G.enemies = (G.d.enemies || []).map(([x, y = 11]) => ({ x: x * T, y: y * T + 2, w: 14, h: 14, vx: -0.5, vy: 0, alive: true, squash: 0 }));
+  G.movers = (G.d.movers || []).map(([x, y, w, dx, dy, range]) => ({ x: x * T, y: y * T, w: w * T, h: 8, ox: x * T, oy: y * T, dx: dx * 0.6, dy: dy * 0.6, range: range * T, dir: 1, px: 0, py: 0, prevY: y * T }));
+}
+function respawn() {
+  G.player = { x: G.spawn[0], y: G.spawn[1], w: 12, h: 15, vx: 0, vy: 0, onGround: false, face: 1, jumpHeld: false, inv: 0, anim: 0, onMover: null };
+  G.dead = 0;
+}
+
+// ===================== 物理 =====================
+const tileAt = (tx, ty) => (ty < 0 || tx < 0 || tx >= G.d.len) ? 0 : (ty >= ROWS ? 0 : G.g[ty][tx]);
+function moveX(e) {
+  e.x += e.vx;
+  const top = Math.floor(e.y / T), bot = Math.floor((e.y + e.h - 1) / T);
+  if (e.vx > 0) { const tx = Math.floor((e.x + e.w - 1) / T); for (let ty = top; ty <= bot; ty++) if (SOLID(tileAt(tx, ty))) { e.x = tx * T - e.w; e.vx = 0; return true; } }
+  else if (e.vx < 0) { const tx = Math.floor(e.x / T); for (let ty = top; ty <= bot; ty++) if (SOLID(tileAt(tx, ty))) { e.x = (tx + 1) * T; e.vx = 0; return true; } }
+  return false;
+}
+function moveY(e, isPlayer) {
+  const prevBottom = e.y + e.h;
+  e.y += e.vy; e.onGround = false;
+  const left = Math.floor(e.x / T), right = Math.floor((e.x + e.w - 1) / T);
+  if (e.vy > 0) {
+    const ty = Math.floor((e.y + e.h - 1) / T);
+    for (let tx = left; tx <= right; tx++) {
+      const t = tileAt(tx, ty);
+      if (SOLID(t) || (t === 8 && prevBottom <= ty * T + 0.01)) { e.y = ty * T - e.h; e.vy = 0; e.onGround = true; }
+    }
+  } else if (e.vy < 0) {
+    const ty = Math.floor(e.y / T);
+    for (let tx = left; tx <= right; tx++) {
+      const t = tileAt(tx, ty);
+      if (SOLID(t)) { e.y = (ty + 1) * T; e.vy = 0; if (isPlayer && t === 3) hitQ(tx, ty); }
+    }
+  }
+  // 動く足場: 乗っている間は足場に追従させる（下降中に判定が外れないように）
+  if (isPlayer) {
+    const was = e.onMover; e.onMover = null;
+    for (const m of G.movers) {
+      const overX = e.x + e.w > m.x && e.x < m.x + m.w;
+      const landing = prevBottom <= m.prevY + 1 && e.y + e.h >= m.y - 1;
+      const riding = was === m && e.y + e.h >= m.y - 3;
+      if (e.vy >= 0 && overX && (landing || riding)) { e.y = m.y - e.h; e.vy = 0; e.onGround = true; e.x += m.px; e.onMover = m; }
+    }
+  }
+}
+function hitQ(tx, ty) {
+  G.g[ty][tx] = 4; G.coins++;
+  G.pops.push({ x: tx * T + 4, y: ty * T - 8, vy: -4, t: 0 });
+  burst(tx * T + 8, ty * T, "#ffd54a", 6);
+}
+function burst(x, y, color, n) { for (let i = 0; i < n; i++) G.particles.push({ x, y, vx: (Math.random() - .5) * 4, vy: -Math.random() * 4, t: 0, color }); }
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+function update() {
+  const p = G.player; G.frame++;
+  if (G.cleared) { // ゴール演出: 旗まで歩く
+    p.vx = 0; p.vy = Math.min(p.vy + GRAVITY, MAX_FALL); moveY(p, true); return;
+  }
+  if (G.dead) { G.dead++; p.vy += GRAVITY; p.y += p.vy; if (G.dead > 70) afterDeath(); return; }
+  G.time += 1000 / 60;
+  // --- 入力 ---
+  if (keys.left) { p.vx -= ACCEL; p.face = -1; } else if (keys.right) { p.vx += ACCEL; p.face = 1; } else p.vx *= FRICTION;
+  p.vx = Math.max(-MAX_RUN, Math.min(MAX_RUN, p.vx)); if (Math.abs(p.vx) < 0.05) p.vx = 0;
+  if (keys.jump && !p.jumpHeld && p.onGround) { p.vy = JUMP_V; p.onGround = false; burst(p.x + 6, p.y + p.h, "#fff", 3); }
+  if (!keys.jump && p.vy < -2) p.vy *= 0.6; // 可変ジャンプ
+  p.jumpHeld = keys.jump;
+  p.vy = Math.min(p.vy + GRAVITY, MAX_FALL);
+  // --- 動く足場 ---
+  for (const m of G.movers) {
+    const nx = m.x + m.dx * m.dir, ny = m.y + m.dy * m.dir;
+    if (Math.abs(nx - m.ox) > m.range || Math.abs(ny - m.oy) > m.range) m.dir *= -1;
+    m.px = m.dx * m.dir; m.py = m.dy * m.dir; m.prevY = m.y; m.x += m.px; m.y += m.py;
+  }
+  moveX(p); moveY(p, true);
+  if (p.x < 0) { p.x = 0; p.vx = 0; }
+  if (Math.abs(p.vx) > 0.3 && p.onGround) p.anim += Math.abs(p.vx) * 0.25;
+  // --- コイン / トゲ ---
+  const cl = Math.floor((p.x + 2) / T), cr = Math.floor((p.x + p.w - 3) / T), ct = Math.floor((p.y + 2) / T), cb = Math.floor((p.y + p.h - 3) / T);
+  for (let ty = ct; ty <= cb; ty++) for (let tx = cl; tx <= cr; tx++) {
+    const t = tileAt(tx, ty);
+    if (t === 5) { G.g[ty][tx] = 0; G.coins++; burst(tx * T + 8, ty * T + 8, "#ffd54a", 5); }
+    else if (t === 6 && p.y + p.h > ty * T + 6) die();
+  }
+  // --- 敵 ---
+  for (const e of G.enemies) {
+    if (!e.alive) { e.squash++; continue; }
+    if (Math.abs(e.x - p.x) > W * 1.2) continue; // 画面から遠い敵は動かさない
+    e.vy = Math.min(e.vy + GRAVITY, MAX_FALL);
+    const hitWall = moveX(e);
+    moveY(e, false);
+    // 壁・崖で反転
+    const aheadX = e.vx < 0 ? e.x - 1 : e.x + e.w + 1, below = tileAt(Math.floor(aheadX / T), Math.floor((e.y + e.h + 1) / T));
+    if (hitWall || (e.onGround && !SOLID(below) && below !== 8)) e.vx *= -1;
+    if (e.y > H + 40) e.alive = false;
+    if (!G.dead && overlap(p, e)) {
+      if (p.vy > 0 && p.y + p.h - e.y < 10) { e.alive = false; e.squash = 0; p.vy = -4.5; burst(e.x + 7, e.y + 7, "#c8763a", 8); }
+      else die();
+    }
+  }
+  // --- 落下死 / チェックポイント / ゴール ---
+  if (p.y > H + 20) die(true);
+  for (const [cx] of G.d.checks || []) if (p.x >= cx * T && G.spawn[0] < cx * T) { G.spawn = [cx * T, 11 * T]; G.msg = "チェックポイント！"; G.msgT = 90; burst(cx * T + 8, 11 * T, "#6ee36f", 10); }
+  if (p.x + p.w / 2 >= G.d.flag * T + 4) clearStage();
+  // --- エフェクト ---
+  G.pops = G.pops.filter(c => (c.t++, c.y += c.vy, c.vy += 0.3, c.t < 30));
+  G.particles = G.particles.filter(q => (q.t++, q.x += q.vx, q.y += q.vy, q.vy += 0.25, q.t < 30));
+  if (G.msgT > 0) G.msgT--;
+  // --- カメラ ---
+  const target = p.x - W * 0.4;
+  G.camX = Math.max(0, Math.min(G.d.len * T - W, Math.max(G.camX, target)));
+}
+function die(fall) {
+  if (G.dead || G.cleared) return;
+  G.dead = 1; G.player.vy = fall ? 0 : -5; G.player.vx = 0;
+  if (navigator.vibrate) navigator.vibrate(100);
+}
+function afterDeath() {
+  G.lives--;
+  if (G.lives <= 0) { running = false; $("overInfo").textContent = `STAGE ${G.i + 1} ${G.d.name} ・ コイン ${G.coins}`; $("overModal").classList.add("show"); return; }
+  // 敵と足場は復活、コインは維持
+  spawnEntities(); respawn(); G.camX = Math.max(0, G.spawn[0] - W * 0.4);
+}
+function clearStage() {
+  G.cleared = true; running = false; burst(G.player.x + 6, G.player.y, "#ffd54a", 30);
+  const total = G.lv.totalCoins, rate = G.coins / total, rank = rate >= 1 ? "★★★" : rate >= 0.6 ? "★★☆" : "★☆☆";
+  saveRecord(G.i, Math.round(G.time), G.coins, total);
+  $("rank").textContent = rank; $("clearTime").textContent = "⏱ " + fmt(G.time);
+  $("clearInfo").textContent = `STAGE ${G.i + 1} ${G.d.name} ・ コイン ${G.coins}/${total} ・ 残りライフ ${G.lives}`;
+  $("toNext").style.display = G.i < STAGES.length - 1 ? "block" : "none";
+  setTimeout(() => $("clearModal").classList.add("show"), 400);
+  draw();
+}
+
+// ===================== 描画 =====================
+function draw() {
+  const th = THEMES[G.d.theme], cam = Math.floor(G.camX), p = G.player;
+  const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, th.sky[0]); sky.addColorStop(1, th.sky[1]);
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  // 遠景の丘 (パララックス)
+  ctx.fillStyle = th.hill2; for (let i = -1; i < 4; i++) { const hx = ((i * 140 - cam * 0.2) % 560 + 560) % 560 - 140; ctx.beginPath(); ctx.ellipse(hx + 70, H - 32, 90, 48, 0, Math.PI, 0); ctx.fill(); }
+  ctx.fillStyle = th.hill; for (let i = -1; i < 4; i++) { const hx = ((i * 180 + 60 - cam * 0.35) % 720 + 720) % 720 - 180; ctx.beginPath(); ctx.ellipse(hx + 90, H - 32, 70, 36, 0, Math.PI, 0); ctx.fill(); }
+  // 雲
+  ctx.fillStyle = th.cloud; for (let i = 0; i < 5; i++) { const cx0 = ((i * 130 + 40 - cam * 0.5) % 650 + 650) % 650 - 60, cy = 24 + (i * 37) % 50; for (const [ox, oy, rx, ry] of [[0, 0, 22, 9], [14, -5, 14, 9], [-12, -3, 12, 7]]) { ctx.beginPath(); ctx.ellipse(cx0 + ox, cy + oy, rx, ry, 0, 0, 7); ctx.fill(); } }
+  // タイル
+  const x0 = Math.floor(cam / T), x1 = Math.min(G.d.len - 1, x0 + VW + 1);
+  for (let ty = 0; ty < ROWS; ty++) for (let tx = x0; tx <= x1; tx++) {
+    const t = G.g[ty][tx]; if (!t) continue;
+    const sx = tx * T - cam, sy = ty * T;
+    if (t === 1) {
+      const topOpen = !SOLID(tileAt(tx, ty - 1));
+      ctx.fillStyle = th.ground; ctx.fillRect(sx, sy, T, T);
+      ctx.fillStyle = "#00000022"; ctx.fillRect(sx + 2, sy + 6, 5, 3); ctx.fillRect(sx + 9, sy + 11, 5, 3);
+      if (topOpen) { ctx.fillStyle = th.groundTop; ctx.fillRect(sx, sy, T, 5); ctx.fillStyle = "#ffffff33"; ctx.fillRect(sx, sy, T, 1); }
+    } else if (t === 2) { ctx.fillStyle = "#b5533c"; ctx.fillRect(sx, sy, T, T); ctx.fillStyle = "#7a3324"; ctx.fillRect(sx, sy + 7, T, 1); ctx.fillRect(sx, sy + 15, T, 1); ctx.fillRect(sx + 7, sy, 1, 7); ctx.fillRect(sx + 3, sy + 8, 1, 7); ctx.fillRect(sx + 11, sy + 8, 1, 7); }
+    else if (t === 3) { ctx.fillStyle = (G.frame >> 3) & 1 ? "#ffb400" : "#ffd54a"; ctx.fillRect(sx, sy, T, T); ctx.fillStyle = "#a35a00"; ctx.fillRect(sx, sy, T, 1); ctx.fillRect(sx, sy + 15, T, 1); ctx.fillRect(sx, sy, 1, T); ctx.fillRect(sx + 15, sy, 1, T); ctx.fillStyle = "#7a3b00"; ctx.font = "bold 11px monospace"; ctx.fillText("?", sx + 5, sy + 12); }
+    else if (t === 4) { ctx.fillStyle = "#8a6a4a"; ctx.fillRect(sx, sy, T, T); ctx.fillStyle = "#5a4030"; ctx.fillRect(sx, sy, T, 1); ctx.fillRect(sx, sy, 1, T); }
+    else if (t === 5) { const bob = Math.sin((G.frame + tx * 7) / 8) * 1.5, wobble = Math.abs(Math.cos((G.frame + tx * 5) / 10)); ctx.fillStyle = "#ffd54a"; ctx.beginPath(); ctx.ellipse(sx + 8, sy + 8 + bob, 2 + 4 * wobble, 6, 0, 0, 7); ctx.fill(); ctx.fillStyle = "#b8860b"; ctx.fillRect(sx + 7, sy + 5 + bob, 2, 6); }
+    else if (t === 6) { ctx.fillStyle = "#dfe6f0"; for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.moveTo(sx + k * 4, sy + 16); ctx.lineTo(sx + k * 4 + 2, sy + 6); ctx.lineTo(sx + k * 4 + 4, sy + 16); ctx.fill(); } ctx.fillStyle = "#8a93a5"; ctx.fillRect(sx, sy + 14, T, 2); }
+    else if (t === 8) { ctx.fillStyle = "#7f8c3f"; ctx.fillRect(sx, sy, T, 6); ctx.fillStyle = "#b9d16a"; ctx.fillRect(sx, sy, T, 2); ctx.fillStyle = "#5c6a2c"; ctx.fillRect(sx + 3, sy + 6, 2, 3); ctx.fillRect(sx + 11, sy + 6, 2, 3); }
+  }
+  // チェックポイント旗
+  for (const [cx] of G.d.checks || []) { const sx = cx * T - cam; if (sx < -20 || sx > W) continue; const got = G.spawn[0] === cx * T; ctx.fillStyle = "#ddd"; ctx.fillRect(sx + 7, 12 * T - 28, 2, 28); ctx.fillStyle = got ? "#6ee36f" : "#999"; ctx.fillRect(sx + 9, 12 * T - 28, 10, 7); }
+  // ゴール旗
+  { const fx = G.d.flag * T - cam; ctx.fillStyle = "#eee"; ctx.fillRect(fx + 7, 3 * T, 3, 9 * T); ctx.fillStyle = "#ffd54a"; ctx.beginPath(); ctx.arc(fx + 8.5, 3 * T, 4, 0, 7); ctx.fill();
+    const fy = G.cleared ? 11 * T - 12 : 3 * T + 4; ctx.fillStyle = "#ff5f5f"; ctx.beginPath(); ctx.moveTo(fx + 10, fy); ctx.lineTo(fx + 26, fy + 6); ctx.lineTo(fx + 10, fy + 12); ctx.fill();
+    ctx.fillStyle = "#7a5230"; ctx.fillRect(fx + 2, 12 * T - 6, 13, 6); }
+  // 動く足場
+  for (const m of G.movers) { const sx = m.x - cam; ctx.fillStyle = "#c9a15a"; ctx.fillRect(sx, m.y, m.w, m.h); ctx.fillStyle = "#8a6a30"; ctx.fillRect(sx, m.y + 6, m.w, 2); ctx.fillStyle = "#ffe9b0"; ctx.fillRect(sx, m.y, m.w, 2); }
+  // 敵
+  for (const e of G.enemies) {
+    const sx = e.x - cam; if (sx < -20 || sx > W + 20) continue;
+    if (!e.alive) { if (e.squash < 30) { ctx.fillStyle = "#8a5a2a"; ctx.fillRect(sx, e.y + 9, 14, 5); } continue; }
+    const step = (G.frame >> 3) & 1;
+    ctx.fillStyle = "#8a5a2a"; ctx.beginPath(); ctx.ellipse(sx + 7, e.y + 7, 7, 7, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#3a2010"; ctx.fillRect(sx + (step ? 1 : 2), e.y + 12, 4, 2); ctx.fillRect(sx + (step ? 9 : 8), e.y + 12, 4, 2);
+    ctx.fillStyle = "#fff"; ctx.fillRect(sx + 3, e.y + 4, 3, 3); ctx.fillRect(sx + 8, e.y + 4, 3, 3);
+    ctx.fillStyle = "#000"; ctx.fillRect(sx + (e.vx < 0 ? 3 : 4), e.y + 5, 2, 2); ctx.fillRect(sx + (e.vx < 0 ? 8 : 9), e.y + 5, 2, 2);
+    ctx.fillStyle = "#3a2010"; ctx.fillRect(sx + 2, e.y + 2, 4, 1); ctx.fillRect(sx + 8, e.y + 2, 4, 1);
+  }
+  // プレイヤー
+  if (!(G.dead && (G.dead >> 2) & 1)) {
+    const sx = Math.round(p.x - cam), sy = Math.round(p.y), f = p.face, leg = p.onGround && Math.abs(p.vx) > 0.3 ? Math.floor(p.anim) % 2 : 0;
+    ctx.fillStyle = "#e03c31"; ctx.fillRect(sx + 1, sy, 10, 3); ctx.fillRect(sx + (f > 0 ? 2 : -1), sy + 2, 11, 2); // 帽子
+    ctx.fillStyle = "#ffcc99"; ctx.fillRect(sx + 2, sy + 4, 8, 4); // 顔
+    ctx.fillStyle = "#000"; ctx.fillRect(sx + (f > 0 ? 7 : 3), sy + 5, 2, 2); // 目
+    ctx.fillStyle = "#e03c31"; ctx.fillRect(sx + 1, sy + 8, 10, 3); // シャツ
+    ctx.fillStyle = "#2f5fd9"; ctx.fillRect(sx + 2, sy + 10, 8, 3); // オーバーオール
+    ctx.fillStyle = "#5a3a1a"; if (!p.onGround) { ctx.fillRect(sx + 1, sy + 13, 4, 2); ctx.fillRect(sx + 7, sy + 13, 4, 2); } else { ctx.fillRect(sx + 1 + (leg ? 2 : 0), sy + 13, 4, 2); ctx.fillRect(sx + 7 - (leg ? 2 : 0), sy + 13, 4, 2); } // 靴
+  }
+  // エフェクト
+  for (const c of G.pops) { ctx.fillStyle = "#ffd54a"; ctx.fillRect(c.x - cam, c.y, 8, 10); }
+  for (const q of G.particles) { ctx.fillStyle = q.color; ctx.globalAlpha = 1 - q.t / 30; ctx.fillRect(q.x - cam, q.y, 3, 3); } ctx.globalAlpha = 1;
+  // HUD
+  ctx.fillStyle = "#00000066"; ctx.fillRect(0, 0, W, 14);
+  ctx.fillStyle = "#fff"; ctx.font = "bold 9px monospace"; ctx.textBaseline = "top";
+  ctx.fillText(`STAGE ${G.i + 1}`, 4, 3); ctx.fillText(`♥×${G.lives}`, 70, 3); ctx.fillStyle = "#ffd54a"; ctx.fillText(`●${G.coins}/${G.lv.totalCoins}`, 112, 3); ctx.fillStyle = "#fff"; ctx.fillText(fmt(G.time), 190, 3);
+  if (G.msgT > 0) { ctx.fillStyle = "#6ee36f"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center"; ctx.fillText(G.msg, W / 2, 30); ctx.textAlign = "left"; }
+  if (G.cleared) { ctx.fillStyle = "#fff"; ctx.font = "bold 20px sans-serif"; ctx.textAlign = "center"; ctx.strokeStyle = "#000"; ctx.lineWidth = 3; ctx.strokeText("GOAL!", W / 2, 60); ctx.fillText("GOAL!", W / 2, 60); ctx.textAlign = "left"; }
+}
+
+// ===================== ループ / レイアウト =====================
+function loop(now) {
+  if (!running) return;
+  acc += Math.min(100, now - lastT); lastT = now;
+  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; if (!running) break; }
+  if (running) draw();
+  requestAnimationFrame(loop);
+}
+function fit() {
+  const portrait = innerHeight > innerWidth;
+  const availH = portrait ? innerHeight - 140 : innerHeight, availW = innerWidth;
+  const s = Math.min(availW / W, availH / H);
+  cv.style.width = Math.floor(W * s) + "px"; cv.style.height = Math.floor(H * s) + "px";
+  cv.style.marginTop = portrait ? "calc(44px + env(safe-area-inset-top))" : "0";
+}
+addEventListener("resize", fit);
+ctx.imageSmoothingEnabled = false;
+
+// ===================== 画面遷移 =====================
+function toSelect() { running = false; G = null; $("game").classList.remove("show"); $("clearModal").classList.remove("show"); $("overModal").classList.remove("show"); $("select").classList.remove("hide"); renderSelect(); }
+$("quit").addEventListener("click", toSelect);
+$("toSelect").addEventListener("click", toSelect);
+$("overSelect").addEventListener("click", toSelect);
+$("toNext").addEventListener("click", () => startStage(G.i + 1));
+$("overRetry").addEventListener("click", () => startStage(G.i));
+renderSelect();
+</script>
+</body>
+</html>

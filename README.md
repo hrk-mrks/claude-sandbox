@@ -12,8 +12,10 @@
 ├── games/
 │   ├── sushida/
 │   │   └── index.html      # 🍣 スマホ寿司打
-│   └── gacha/
-│       └── index.html      # 💎 無限ガチャ
+│   ├── gacha/
+│   │   └── index.html      # 💎 無限ガチャ
+│   └── platformer/
+│       └── index.html      # 🍄 ジャンプアドベンチャー
 ├── README.md
 └── .github/workflows/pages.yml   # main への push で GitHub Pages に自動デプロイ
 ```
@@ -24,6 +26,7 @@
 | --- | --- | --- |
 | 🍣 スマホ寿司打 | `games/sushida/` | 60秒ローマ字タイピング。shi/si など入力ゆれ対応 |
 | 💎 無限ガチャ | `games/gacha/` | 石1000個（単発10・10連100で11体）。★3〜★6のモンスター、レア度別演出、使い切ると集計表示 |
+| 🍄 ジャンプアドベンチャー | `games/platformer/` | 横スクロールアクション。ステージ選択（★1〜★3）、タッチ操作、敵踏み・コイン・?ブロック・動く足場・チェックポイント、ベストタイム保存 |
 
 ## ゲームを追加する
 
