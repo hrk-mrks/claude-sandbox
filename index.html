@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>スマホ寿司打</title>
+<style>
+  :root {
+    --bg: #1b1b1f;
+    --panel: #2a2a30;
+    --text: #f4f4f4;
+    --sub: #9a9aa3;
+    --accent: #ff6b4a;
+    --ok: #6ed37a;
+    --ng: #ff5566;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .app { width: 100%; max-width: 480px; }
+  header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  h1 { font-size: 20px; margin: 0; }
+  .stats { display: flex; gap: 12px; font-size: 14px; color: var(--sub); }
+  .stats b { color: var(--text); font-size: 18px; }
+  .panel {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 24px 16px;
+    min-height: 220px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 12px;
+  }
+  .sushi { font-size: 48px; line-height: 1; }
+  .word { font-size: 28px; font-weight: bold; }
+  .kana { font-size: 14px; color: var(--sub); }
+  .romaji { font-size: 24px; font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: 1px; word-break: break-all; }
+  .romaji .done { color: var(--ok); }
+  .romaji .buf { color: var(--accent); text-decoration: underline; }
+  .romaji .rest { color: var(--text); }
+  .timer { height: 6px; background: #444; border-radius: 3px; overflow: hidden; margin-top: 12px; }
+  .timer > div { height: 100%; background: var(--accent); width: 100%; transition: width .2s linear; }
+  .hint { font-size: 13px; color: var(--sub); margin-top: 10px; text-align: center; }
+  button {
+    width: 100%;
+    margin-top: 16px;
+    padding: 16px;
+    font-size: 18px;
+    font-weight: bold;
+    border: none;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+  }
+  button:active { opacity: .8; }
+  /* ソフトキーボードを出すための入力欄。見えないが操作可能な位置に置く */
+  #kb {
+    position: fixed;
+    bottom: 0; left: 0;
+    width: 1px; height: 1px;
+    opacity: 0.01;
+    font-size: 16px; /* iOS の自動ズーム防止 */
+    border: 0; padding: 0;
+  }
+  .flash-ng { animation: shake .15s; }
+  @keyframes shake { 0%{transform:translateX(0)} 33%{transform:translateX(-6px)} 66%{transform:translateX(6px)} 100%{transform:translateX(0)} }
+  .result { font-size: 16px; line-height: 1.8; }
+  .result .big { font-size: 40px; font-weight: bold; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🍣 スマホ寿司打</h1>
+    <div class="stats">
+      <div>残り <b id="time">60</b>s</div>
+      <div>皿 <b id="count">0</b></div>
+      <div>ミス <b id="miss">0</b></div>
+    </div>
+  </header>
+
+  <div class="panel" id="panel">
+    <div class="sushi">🍣</div>
+    <div class="word">タップしてスタート</div>
+    <div class="kana">ローマ字で入力。英字キーボードに切り替えてください</div>
+  </div>
+  <div class="timer"><div id="bar"></div></div>
+  <div class="hint" id="hint">画面をタップするとキーボードが出ます</div>
+  <button id="startBtn">スタート（60秒）</button>
+
+  <input id="kb" type="text" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="latin" aria-label="タイピング入力">
+</div>
+
+<script>
+// ===== 単語リスト: [表示, かな] =====
+const WORDS = [
+  ["寿司", "すし"], ["まぐろ", "まぐろ"], ["サーモン", "さーもん"], ["いくら", "いくら"],
+  ["たまご", "たまご"], ["えび", "えび"], ["あなご", "あなご"], ["うに", "うに"],
+  ["はまち", "はまち"], ["ほたて", "ほたて"], ["いか", "いか"], ["たこ", "たこ"],
+  ["かっぱ巻き", "かっぱまき"], ["鉄火巻き", "てっかまき"], ["納豆巻き", "なっとうまき"],
+  ["お茶", "おちゃ"], ["醤油", "しょうゆ"], ["わさび", "わさび"], ["ガリ", "がり"],
+  ["あがり", "あがり"], ["しゃり", "しゃり"], ["炙りサーモン", "あぶりさーもん"],
+  ["中トロ", "ちゅうとろ"], ["大トロ", "おおとろ"], ["赤身", "あかみ"], ["ネギトロ", "ねぎとろ"],
+  ["エンガワ", "えんがわ"], ["かんぴょう", "かんぴょう"], ["玉子焼き", "たまごやき"],
+  ["茶碗蒸し", "ちゃわんむし"], ["味噌汁", "みそしる"], ["回転寿司", "かいてんずし"],
+  ["今日はいい天気", "きょうはいいてんき"], ["お腹がすいた", "おなかがすいた"],
+  ["ごちそうさま", "ごちそうさま"], ["いただきます", "いただきます"],
+  ["おいしい", "おいしい"], ["もう一皿", "もういっさら"], ["特上握り", "とくじょうにぎり"],
+  ["新鮮なネタ", "しんせんなねた"], ["お会計お願いします", "おかいけいおねがいします"],
+  ["スマホで練習", "すまほでれんしゅう"], ["タイピング", "たいぴんぐ"], ["寿司打", "すしだ"],
+];
+
+// ===== かな → ローマ字候補 =====
+const ROMA = {
+  "あ":["a"],"い":["i","yi"],"う":["u","wu","whu"],"え":["e"],"お":["o"],
+  "か":["ka","ca"],"き":["ki"],"く":["ku","cu","qu"],"け":["ke"],"こ":["ko","co"],
+  "さ":["sa"],"し":["shi","si","ci"],"す":["su"],"せ":["se","ce"],"そ":["so"],
+  "た":["ta"],"ち":["chi","ti"],"つ":["tsu","tu"],"て":["te"],"と":["to"],
+  "な":["na"],"に":["ni"],"ぬ":["nu"],"ね":["ne"],"の":["no"],
+  "は":["ha"],"ひ":["hi"],"ふ":["fu","hu"],"へ":["he"],"ほ":["ho"],
+  "ま":["ma"],"み":["mi"],"む":["mu"],"め":["me"],"も":["mo"],
+  "や":["ya"],"ゆ":["yu"],"よ":["yo"],
+  "ら":["ra"],"り":["ri"],"る":["ru"],"れ":["re"],"ろ":["ro"],
+  "わ":["wa"],"を":["wo"],"ん":["nn","xn"],
+  "が":["ga"],"ぎ":["gi"],"ぐ":["gu"],"げ":["ge"],"ご":["go"],
+  "ざ":["za"],"じ":["ji","zi"],"ず":["zu"],"ぜ":["ze"],"ぞ":["zo"],
+  "だ":["da"],"ぢ":["di"],"づ":["du"],"で":["de"],"ど":["do"],
+  "ば":["ba"],"び":["bi"],"ぶ":["bu"],"べ":["be"],"ぼ":["bo"],
+  "ぱ":["pa"],"ぴ":["pi"],"ぷ":["pu"],"ぺ":["pe"],"ぽ":["po"],
+  "ぁ":["xa","la"],"ぃ":["xi","li"],"ぅ":["xu","lu"],"ぇ":["xe","le"],"ぉ":["xo","lo"],
+  "ゃ":["xya","lya"],"ゅ":["xyu","lyu"],"ょ":["xyo","lyo"],
+  "ー":["-"],"、":[","],"。":["."],"！":["!"],"？":["?"]," ":[" "],
+  "きゃ":["kya"],"きゅ":["kyu"],"きょ":["kyo"],
+  "しゃ":["sha","sya"],"しゅ":["shu","syu"],"しょ":["sho","syo"],
+  "ちゃ":["cha","tya","cya"],"ちゅ":["chu","tyu","cyu"],"ちょ":["cho","tyo","cyo"],
+  "にゃ":["nya"],"にゅ":["nyu"],"にょ":["nyo"],
+  "ひゃ":["hya"],"ひゅ":["hyu"],"ひょ":["hyo"],
+  "みゃ":["mya"],"みゅ":["myu"],"みょ":["myo"],
+  "りゃ":["rya"],"りゅ":["ryu"],"りょ":["ryo"],
+  "ぎゃ":["gya"],"ぎゅ":["gyu"],"ぎょ":["gyo"],
+  "じゃ":["ja","zya","jya"],"じゅ":["ju","zyu","jyu"],"じょ":["jo","zyo","jyo"],
+  "びゃ":["bya"],"びゅ":["byu"],"びょ":["byo"],
+  "ぴゃ":["pya"],"ぴゅ":["pyu"],"ぴょ":["pyo"],
+  "ふぁ":["fa"],"ふぃ":["fi"],"ふぇ":["fe"],"ふぉ":["fo"],
+  "てぃ":["thi","texi"],"でぃ":["dhi","dexi"],"うぃ":["wi"],"うぇ":["we"],
+};
+
+// かな文字列 → ユニット配列（各ユニットは候補ローマ字の配列）
+function toUnits(kana) {
+  const units = [];
+  let i = 0;
+  while (i < kana.length) {
+    let small = false;
+    if (kana[i] === "っ") { small = true; i++; if (i >= kana.length) { units.push(["xtu","ltu","xtsu","ltsu"]); break; } }
+    let unit;
+    if (i + 1 < kana.length && ROMA[kana.slice(i, i + 2)]) { unit = ROMA[kana.slice(i, i + 2)]; i += 2; }
+    else { unit = ROMA[kana[i]] || [kana[i]]; i += 1; }
+    if (small) {
+      // 「っ」は次の子音を重ねる or xtu/ltu
+      const doubled = unit.map(r => r[0] + r);
+      unit = doubled.concat(unit.flatMap(r => ["xtu" + r, "ltu" + r]));
+    }
+    units.push(unit);
+  }
+  // 「ん」: 次が母音・な行・や行以外なら "n" 1文字も許可
+  for (let k = 0; k < units.length; k++) {
+    if (units[k][0] === "nn") {
+      const next = units[k + 1];
+      if (next && !next.some(r => /^[aiueony]/.test(r))) units[k] = ["n", "nn", "xn"];
+    }
+  }
+  return units;
+}
+
+// ===== ゲーム状態 =====
+const GAME_SEC = 60;
+let state = null;
+const $ = id => document.getElementById(id);
+const kb = $("kb"), panel = $("panel");
+
+function pickWord(prev) {
+  const pool = WORDS.length > 1 ? WORDS.filter(w => w !== prev) : WORDS;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function start() {
+  state = {
+    word: null, units: [], ui: 0, buf: "",
+    count: 0, miss: 0, typed: 0,
+    end: Date.now() + GAME_SEC * 1000,
+  };
+  nextWord();
+  kb.value = "";
+  kb.focus();
+  $("startBtn").textContent = "やり直す";
+  $("hint").textContent = "キーボードが消えたら画面をタップ";
+  clearInterval(state.timer);
+  state.timer = setInterval(tick, 100);
+}
+
+function nextWord() {
+  state.word = pickWord(state.word);
+  state.units = toUnits(state.word[1]);
+  state.ui = 0;
+  state.buf = "";
+  render();
+}
+
+function tick() {
+  const left = Math.max(0, state.end - Date.now());
+  $("time").textContent = Math.ceil(left / 1000);
+  $("bar").style.width = (left / (GAME_SEC * 1000) * 100) + "%";
+  if (left <= 0) finish();
+}
+
+function finish() {
+  clearInterval(state.timer);
+  const s = state; state = null;
+  kb.blur();
+  const total = s.typed + s.miss;
+  const acc = total ? Math.round(s.typed / total * 100) : 0;
+  panel.innerHTML = `
+    <div class="sushi">🍣</div>
+    <div class="result">
+      <div class="big">${s.count} 皿</div>
+      <div>正しく打ったキー: ${s.typed}　ミス: ${s.miss}</div>
+      <div>正確率: ${acc}%　速度: ${(s.typed / GAME_SEC).toFixed(1)} キー/秒</div>
+    </div>`;
+  $("hint").textContent = "もう一度遊ぶにはボタンを押してください";
+}
+
+function render() {
+  const [disp, kana] = state.word;
+  let done = "", rest = "";
+  state.units.forEach((u, k) => { if (k < state.ui) done += u[0]; else if (k > state.ui) rest += u[0]; });
+  // 現在ユニットの残り: 入力中バッファに一致する候補のうち先頭のもの
+  const cur = state.units[state.ui] || [""];
+  const cand = cur.find(r => r.startsWith(state.buf)) || cur[0];
+  const curRest = cand.slice(state.buf.length);
+  panel.innerHTML = `
+    <div class="sushi">🍣</div>
+    <div class="word">${disp}</div>
+    <div class="kana">${kana}</div>
+    <div class="romaji"><span class="done">${done}</span><span class="buf">${state.buf}</span><span class="rest">${curRest}${rest}</span></div>`;
+  $("count").textContent = state.count;
+  $("miss").textContent = state.miss;
+}
+
+function onChar(c) {
+  if (!state) return;
+  c = c.toLowerCase();
+  const cur = state.units[state.ui];
+  const nb = state.buf + c;
+  const matches = cur.filter(r => r.startsWith(nb));
+  if (matches.length === 0) {
+    state.miss++;
+    panel.classList.remove("flash-ng"); void panel.offsetWidth; panel.classList.add("flash-ng");
+    if (navigator.vibrate) navigator.vibrate(30);
+    render();
+    return;
+  }
+  state.typed++;
+  if (matches.some(r => r === nb)) {
+    state.ui++; state.buf = "";
+    if (state.ui >= state.units.length) { state.count++; nextWord(); return; }
+  } else {
+    state.buf = nb;
+  }
+  render();
+}
+
+// ===== 入力ハンドリング（スマホのソフトキーボード + PC キーボード） =====
+kb.addEventListener("input", () => {
+  const v = kb.value;
+  kb.value = "";
+  for (const ch of v) if (/^[a-zA-Z\-,.!? ]$/.test(ch)) onChar(ch);
+});
+kb.addEventListener("keydown", e => {
+  // PC: input イベントでも拾えるが、IME 無効時のために keydown も見る（重複防止のため preventDefault）
+  if (e.key.length === 1 && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    e.preventDefault();
+    onChar(e.key);
+  }
+});
+document.addEventListener("keydown", e => {
+  if (document.activeElement !== kb && state && e.key.length === 1) { kb.focus(); }
+});
+
+$("startBtn").addEventListener("click", start);
+panel.addEventListener("click", () => { if (state) kb.focus(); });
+</script>
+</body>
+</html>
