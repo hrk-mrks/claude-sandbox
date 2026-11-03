@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>データと恋とダッシュボード</title>
+<style>
+  :root { --text: #fff; --box: #1a1530ee; --accent: #29b6f6; --gold: #ffd166; }
+  * { box-sizing: border-box; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { background: #000; color: var(--text); font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", -apple-system, sans-serif; -webkit-user-select: none; user-select: none; }
+  #stage { position: fixed; inset: 0; overflow: hidden; display: flex; justify-content: center; }
+  .inner { position: relative; width: 100%; max-width: 520px; height: 100%; }
+  /* 背景 */
+  #bg { position: absolute; inset: 0; transition: opacity .5s; }
+  .bg-lobby { background: linear-gradient(#dfe9f3 0 62%, #9aa7b8 62% 100%); }
+  .bg-lobby::before { content: ""; position: absolute; left: 30%; width: 40%; top: 14%; height: 48%; background: #6c7a8c; border: 8px solid #bfc9d6; }
+  .bg-lobby::after { content: ""; position: absolute; left: 49%; width: 2%; top: 14%; height: 48%; background: #bfc9d6; }
+  .bg-office { background: linear-gradient(#f3f6fa 0 58%, #cfd6e0 58% 100%); }
+  .bg-office::before { content: ""; position: absolute; left: 6%; right: 6%; top: 36%; height: 22%; background: linear-gradient(#2d3b55, #1b2538); border-radius: 6px; box-shadow: 0 10px 0 #9aa7b8; }
+  .bg-office::after { content: "▮▮▮ ▮▮ ▮▮▮▮  ▮▮  ▮▮▮"; position: absolute; left: 10%; top: 40%; color: #7fd1ff; font-size: 12px; letter-spacing: 2px; }
+  .bg-meeting { background: linear-gradient(#eef2f7 0 60%, #b9c3d1 60% 100%); }
+  .bg-meeting::before { content: ""; position: absolute; left: 12%; right: 12%; top: 12%; height: 36%; background: #fff; border: 10px solid #d7dee8; }
+  .bg-meeting::after { content: "📈"; position: absolute; left: 0; right: 0; top: 18%; text-align: center; font-size: 60px; }
+  .bg-cafe { background: linear-gradient(#f9efe0 0 60%, #a0734a 60% 100%); }
+  .bg-cafe::before { content: "☕"; position: absolute; left: 0; right: 0; top: 20%; text-align: center; font-size: 70px; opacity: .6; }
+  .bg-server { background: linear-gradient(#0b1220, #15223a); }
+  .bg-server::before { content: ""; position: absolute; left: 10%; right: 10%; top: 10%; bottom: 35%; background: repeating-linear-gradient(90deg, #1f3050 0 60px, #0b1220 60px 70px); border: 4px solid #2a3b5c; }
+  .bg-server::after { content: "● ● ● ●   ● ● ● ●   ● ● ● ●"; position: absolute; left: 0; right: 0; top: 16%; text-align: center; color: #4ade80; font-size: 10px; letter-spacing: 6px; text-shadow: 0 0 8px #4ade80; }
+  .bg-roof { background: linear-gradient(#ff9a5c, #ffd36b 50%, #3c3148 50%, #2b2235 100%); }
+  .bg-roof::before { content: ""; position: absolute; left: 0; right: 0; top: 34%; height: 16%; background: repeating-linear-gradient(90deg, #2b2235 0 30px, #3c3148 30px 55px, #22192b 55px 90px); }
+  .bg-bar { background: radial-gradient(circle at 50% 30%, #4a2f1a, #1a0f08 70%); }
+  .bg-bar::before { content: "🍻"; position: absolute; left: 0; right: 0; top: 14%; text-align: center; font-size: 64px; }
+  .bg-night { background: radial-gradient(circle at 70% 25%, #fff6c0 0 30px, #1b2a5a 31px), #1b2a5a; }
+  .bg-stage { background: radial-gradient(circle at 50% 60%, #3b2a6b 0%, #120c2a 60%); }
+  .bg-stage::before { content: "DATA MEETUP"; position: absolute; left: 0; right: 0; top: 14%; text-align: center; color: #29b6f6; font-weight: 900; font-size: 22px; letter-spacing: 6px; text-shadow: 0 0 12px #29b6f6; }
+  /* キャラ */
+  #chars { position: absolute; left: 0; right: 0; bottom: 30%; height: 62%; display: flex; justify-content: center; align-items: flex-end; pointer-events: none; }
+  .char { height: 100%; opacity: 0; transform: translateY(20px); transition: opacity .35s, transform .35s; }
+  .char.show { opacity: 1; transform: translateY(0); }
+  .char.talk { animation: bob .3s; }
+  @keyframes bob { 50% { transform: translateY(-8px); } }
+  .char svg { height: 100%; width: auto; filter: drop-shadow(0 6px 10px #0006); }
+  /* テキスト */
+  #box { position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); height: 28%; background: var(--box); border: 2px solid #ffffff33; border-radius: 16px; padding: 14px 16px; backdrop-filter: blur(4px); }
+  #name { position: absolute; top: -16px; left: 14px; background: var(--accent); color: #04202e; font-weight: bold; padding: 4px 14px; border-radius: 999px; font-size: 14px; display: none; }
+  #name.show { display: block; }
+  #text { font-size: 16px; line-height: 1.7; white-space: pre-wrap; }
+  #text.narr { color: #e9e2ff; font-style: italic; }
+  #arrow { position: absolute; right: 14px; bottom: 10px; color: var(--accent); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: .2; } }
+  #choices { position: absolute; left: 20px; right: 20px; top: 50%; transform: translateY(-50%); display: none; flex-direction: column; gap: 12px; }
+  #choices.show { display: flex; }
+  #choices button { border: 2px solid var(--accent); background: #1a1530f2; color: #fff; border-radius: 14px; padding: 16px; font-size: 16px; text-align: left; animation: pop .3s backwards; }
+  #choices button:active { background: var(--accent); color: #04202e; }
+  #choices button.q::before { content: "💡 "; }
+  @keyframes pop { from { transform: scale(.9); opacity: 0; } }
+  #menu { position: absolute; top: calc(10px + env(safe-area-inset-top)); right: 10px; display: flex; gap: 6px; }
+  #menu button { background: #0008; color: #fff; border: 1px solid #fff5; border-radius: 999px; padding: 6px 12px; font-size: 12px; }
+  #hearts { position: absolute; top: calc(48px + env(safe-area-inset-top)); left: 10px; right: 10px; font-size: 11px; white-space: nowrap; overflow: hidden; background: #0008; border-radius: 999px; padding: 6px 10px; display: none; }
+  .flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+  .flash.on { animation: flash .4s; }
+  @keyframes flash { 0% { opacity: 1; } 100% { opacity: 0; } }
+  .shake { animation: shake .4s; }
+  @keyframes shake { 0%,100%{transform:translate(0)} 20%{transform:translate(-10px,6px)} 40%{transform:translate(10px,-6px)} 60%{transform:translate(-6px,4px)} 80%{transform:translate(6px,-4px)} }
+  /* タイトル / 画面 */
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; z-index: 20; }
+  .screen.show { display: flex; }
+  #title { background: linear-gradient(160deg, #0f2027, #203a43 50%, #2c5364); color: #e6f7ff; }
+  #title h1 { font-size: 30px; margin: 0; letter-spacing: 1px; text-shadow: 0 0 16px #29b6f6aa; }
+  #title .sub { font-size: 13px; margin: 6px 0 24px; opacity: .8; }
+  #title input { font-size: 18px; padding: 12px 14px; border-radius: 12px; border: 2px solid #29b6f6; width: 100%; max-width: 280px; text-align: center; margin-bottom: 14px; }
+  .btn { border: 0; border-radius: 14px; padding: 14px 28px; font-size: 17px; font-weight: bold; background: var(--accent); color: #fff; width: 100%; max-width: 280px; margin: 5px 0; box-shadow: 0 4px 0 #0e7bb3; }
+  .btn.sub2 { background: #fff; color: #0e7bb3; box-shadow: 0 4px 0 #9fd6f0; }
+  .btn:active { transform: translateY(3px); box-shadow: none; }
+  #title a { color: #bfe6ff; font-size: 13px; margin-top: 16px; text-decoration: none; }
+  .endings { font-size: 13px; color: #bfe6ff; margin-top: 12px; line-height: 1.8; }
+  #ending { background: radial-gradient(circle, #2a1b4a, #0d0820); }
+  #ending h2 { font-size: 14px; letter-spacing: 6px; color: var(--gold); margin: 0; }
+  #ending h1 { font-size: 30px; margin: 8px 0 20px; }
+  #ending p { color: #d9d0ff; font-size: 14px; line-height: 1.8; max-width: 320px; }
+  #log { background: #0d0820f5; justify-content: flex-start; overflow: auto; text-align: left; }
+  #log .l { font-size: 14px; line-height: 1.6; margin-bottom: 10px; border-left: 3px solid var(--accent); padding-left: 10px; width: 100%; }
+  #log .l b { color: var(--accent); }
+</style>
+</head>
+<body>
+<div id="stage"><div class="inner">
+  <div id="bg" class="bg-lobby"></div>
+  <div id="chars"><div class="char" id="charL"></div></div>
+  <div class="flash" id="flash"></div>
+  <div id="hearts"></div>
+  <div id="menu"><button id="logBtn">ログ</button><button id="titleBtn">タイトル</button></div>
+  <div id="box"><div id="name"></div><div id="text"></div><div id="arrow">▼</div></div>
+  <div id="choices"></div>
+
+  <div class="screen show" id="title">
+    <h1>📊 データと恋とダッシュボード</h1>
+    <div class="sub">〜 データエンジニア恋愛シミュレーション 〜<br>dbt・Tableau・Snowflake の知識が恋の鍵</div>
+    <input id="nameInput" maxlength="8" placeholder="主人公の名前（例: 結衣）">
+    <button class="btn" id="newBtn">はじめから</button>
+    <button class="btn sub2" id="contBtn" style="display:none">つづきから</button>
+    <div class="endings" id="endList"></div>
+    <a href="../../">‹ ゲーム一覧へ</a>
+  </div>
+  <div class="screen" id="ending">
+    <h2>ENDING</h2><h1 id="endTitle"></h1><p id="endText"></p><p id="endScore" style="color:var(--gold)"></p>
+    <button class="btn" id="endBack">タイトルへ</button>
+  </div>
+  <div class="screen" id="log"><div id="logBody" style="width:100%"></div><button class="btn sub2" id="logClose">閉じる</button></div>
+</div></div>
+
+<script>
+// ===================== キャラクター =====================
+const CHARS = {
+  ren:  { name: "水瀬 蓮",  hair: "#b7c6e6", hairDark: "#8a9dc4", eyes: "#5b7fb0", tie: "#3b4a8a", style: "parted", color: "#7fa8ff", skill: "dbt" },
+  yuma: { name: "朝日 悠真", hair: "#f0963d", hairDark: "#b8661f", eyes: "#8a5a2a", tie: "#d94b4b", style: "spiky", color: "#ffb347", skill: "Tableau" },
+  tsukasa: { name: "氷室 司", hair: "#3a3d66", hairDark: "#22243f", eyes: "#7a4ec7", tie: "#6a3fb0", style: "neat", color: "#b48cff", skill: "Snowflake" },
+  bucho: { name: "部長", hair: "#6b6b6b", hairDark: "#4a4a4a", eyes: "#444", tie: "#555", style: "neat", color: "#aaa" },
+};
+function sprite(id, expr = "normal") {
+  const c = CHARS[id];
+  const bangs = {
+    parted: `<path d="M50 104 Q46 44 100 40 Q154 44 150 104 L140 104 Q142 78 124 70 Q108 68 98 90 Q92 70 74 72 Q58 78 60 104 Z" fill="${c.hair}"/><path d="M98 90 Q104 70 124 70" stroke="${c.hairDark}" stroke-width="2" fill="none"/>`,
+    spiky:  `<path d="M48 104 L50 50 Q70 30 100 34 Q130 30 150 50 L152 104 L140 96 L132 80 L120 96 L110 78 L100 98 L90 78 L80 96 L68 80 L60 96 Z" fill="${c.hair}"/>`,
+    neat:   `<path d="M48 106 Q46 42 100 38 Q154 42 152 106 L140 106 Q140 80 120 80 Q104 80 100 88 Q96 80 80 80 Q60 80 60 106 Z" fill="${c.hair}"/><path d="M100 40 L100 88" stroke="${c.hairDark}" stroke-width="2"/>`,
+  }[c.style];
+  const eyes = {
+    normal: `<ellipse cx="80" cy="112" rx="7" ry="9" fill="${c.eyes}"/><ellipse cx="120" cy="112" rx="7" ry="9" fill="${c.eyes}"/><circle cx="83" cy="109" r="2.5" fill="#fff"/><circle cx="123" cy="109" r="2.5" fill="#fff"/>`,
+    smile:  `<path d="M72 114 Q80 104 88 114" stroke="${c.eyes}" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M112 114 Q120 104 128 114" stroke="${c.eyes}" stroke-width="3" fill="none" stroke-linecap="round"/>`,
+    surprised: `<ellipse cx="80" cy="112" rx="8" ry="11" fill="${c.eyes}"/><ellipse cx="120" cy="112" rx="8" ry="11" fill="${c.eyes}"/><circle cx="83" cy="108" r="3" fill="#fff"/><circle cx="123" cy="108" r="3" fill="#fff"/>`,
+    blush:  `<ellipse cx="80" cy="113" rx="7" ry="8" fill="${c.eyes}"/><ellipse cx="120" cy="113" rx="7" ry="8" fill="${c.eyes}"/><circle cx="83" cy="110" r="2.5" fill="#fff"/><circle cx="123" cy="110" r="2.5" fill="#fff"/>`,
+    angry:  `<ellipse cx="80" cy="113" rx="7" ry="8" fill="${c.eyes}"/><ellipse cx="120" cy="113" rx="7" ry="8" fill="${c.eyes}"/><circle cx="83" cy="110" r="2.5" fill="#fff"/><circle cx="123" cy="110" r="2.5" fill="#fff"/>`,
+    sad:    `<ellipse cx="80" cy="113" rx="7" ry="8" fill="${c.eyes}"/><ellipse cx="120" cy="113" rx="7" ry="8" fill="${c.eyes}"/><circle cx="83" cy="110" r="2.5" fill="#fff"/><circle cx="123" cy="110" r="2.5" fill="#fff"/>`,
+  }[expr] || "";
+  const brows = {
+    normal: `<path d="M70 98 Q80 94 90 97" /><path d="M110 97 Q120 94 130 98" />`, smile: `<path d="M70 98 Q80 93 90 96" /><path d="M110 96 Q120 93 130 98" />`,
+    surprised: `<path d="M70 92 Q80 86 90 91" /><path d="M110 91 Q120 86 130 92" />`, blush: `<path d="M70 98 Q80 95 90 99" /><path d="M110 99 Q120 95 130 98" />`,
+    angry: `<path d="M70 94 Q80 96 90 101" /><path d="M110 101 Q120 96 130 94" />`, sad: `<path d="M70 100 Q80 95 90 97" /><path d="M110 97 Q120 95 130 100" />`,
+  }[expr] || "";
+  const mouth = {
+    normal: `<path d="M94 136 Q100 139 106 136" stroke="#c0605a" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
+    smile: `<path d="M90 134 Q100 144 110 134" stroke="#c0605a" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
+    surprised: `<ellipse cx="100" cy="138" rx="5" ry="7" fill="#9b3f3f"/>`,
+    blush: `<path d="M94 137 Q100 141 106 137" stroke="#c0605a" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
+    angry: `<path d="M92 139 Q100 133 108 139" stroke="#c0605a" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
+    sad: `<path d="M93 139 Q100 135 107 139" stroke="#c0605a" stroke-width="2.5" fill="none" stroke-linecap="round"/>`,
+  }[expr] || "";
+  const blush = (expr === "blush" || expr === "smile") ? `<ellipse cx="68" cy="128" rx="9" ry="5" fill="#ff9aa2" opacity=".6"/><ellipse cx="132" cy="128" rx="9" ry="5" fill="#ff9aa2" opacity=".6"/>` : "";
+  return `<svg viewBox="0 0 200 320" xmlns="http://www.w3.org/2000/svg">
+    <path d="M40 320 L46 215 Q70 190 100 190 Q130 190 154 215 L160 320 Z" fill="#2d3350"/>
+    <path d="M80 196 L100 240 L120 196 L112 192 L100 212 L88 192 Z" fill="#fff"/>
+    <path d="M96 198 L104 198 L106 230 L100 240 L94 230 Z" fill="${c.tie}"/>
+    <path d="M46 215 L70 196 L84 220 L66 320 L40 320 Z M154 215 L130 196 L116 220 L134 320 L160 320 Z" fill="#242a44"/>
+    <rect x="88" y="160" width="24" height="40" rx="8" fill="#f1cdb3"/>
+    <path d="M42 120 Q38 36 100 32 Q162 36 158 120 L152 158 Q144 166 138 156 L138 112 L62 112 L62 156 Q56 166 48 158 Z" fill="${c.hairDark}"/>
+    <ellipse cx="100" cy="112" rx="46" ry="54" fill="#ffe3cf"/>
+    <ellipse cx="54" cy="116" rx="7" ry="10" fill="#ffe3cf"/><ellipse cx="146" cy="116" rx="7" ry="10" fill="#ffe3cf"/>
+    ${bangs}
+    <g stroke="${c.hairDark}" stroke-width="3" fill="none" stroke-linecap="round">${brows}</g>
+    ${eyes}${blush}${mouth}
+  </svg>`;
+}
+
+// ===================== シナリオ =====================
+// 選択肢: { t, go, aff, q: true(知識問題), ok: true(正解) }
+const SCRIPT = {
+  prologue: [
+    { bg: "lobby", c: null },
+    { t: "「やばい、初日から遅刻……！」" },
+    { t: "株式会社ノーススター、データ基盤チーム配属初日。\nコンビニのコーヒーを片手に、閉まりかけのエレベーターへ全力ダッシュ。" },
+    { t: "滑り込んだ、その瞬間——" },
+    { fx: "shake", t: "ドンッ！！" },
+    { fx: "flash", t: "「ひゃっ……！」\n紙コップが宙を舞い、誰かの白いシャツに茶色いシミが広がった。" },
+    { c: "ren", e: "surprised", n: "？？？", t: "……熱っ。" },
+    { t: "見上げると、銀髪に近い色の髪の男性が、無表情でシャツを見下ろしていた。\n胸元のストラップには「Analytics Engineer」の文字。" },
+    { c: "ren", e: "normal", n: "？？？", t: "コーヒー、落ちたけど。……シャツに。" },
+    { choice: [
+      { t: "「ご、ごめんなさい！ クリーニング代払います！」", go: "p_a", aff: { ren: 1 } },
+      { t: "「そっちこそ『閉』ボタン押したでしょ！」", go: "p_b", aff: { ren: 2 } },
+      { t: "「……そのシミ、散布図に見えますね」", go: "p_c", aff: { ren: 3 } },
+    ] },
+  ],
+  p_a: [
+    { c: "ren", e: "normal", n: "？？？", t: "別にいい。どうせ今日はデプロイで徹夜明けだし、シャツも二日目だ。" },
+    { go: "p_end" },
+  ],
+  p_b: [
+    { c: "ren", e: "surprised", n: "？？？", t: "……押してない。" },
+    { c: "ren", e: "smile", n: "？？？", t: "ふ。ぶつかっておいて逆ギレか。新人、面白いな。" },
+    { go: "p_end" },
+  ],
+  p_c: [
+    { c: "ren", e: "surprised", n: "？？？", t: "……散布図。" },
+    { c: "ren", e: "smile", n: "？？？", t: "外れ値が多いな。……君、変わってる。嫌いじゃないけど。" },
+    { go: "p_end" },
+  ],
+  p_end: [
+    { c: "ren", e: "normal", n: "？？？", t: "俺は水瀬蓮。データ基盤チームの、まあ、dbt 担当。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "一つ聞く。君、モデリングは何でやってた？" },
+    { choice: [
+      { t: "「dbt です。staging → intermediate → marts の構成で」", go: "p_q_ok", aff: { ren: 3 }, q: true, ok: true },
+      { t: "「Excel の VLOOKUP で……」", go: "p_q_ng1", aff: { ren: 0 }, q: true },
+      { t: "「手書き SQL を cron で回してました」", go: "p_q_ng2", aff: { ren: 1 }, q: true },
+    ] },
+  ],
+  p_q_ok: [
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "……正解。レイヤーを分けてるなら話が早い。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "staging はソースの軽い整形、marts がビジネスの答え。この境界を守れる人は少ない。" },
+    { go: "office" },
+  ],
+  p_q_ng1: [
+    { c: "ren", e: "sad", n: "水瀬 蓮", t: "……VLOOKUP。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "今日から忘れろ。うちは dbt で、SQL をバージョン管理してテストも書く。Excel は卒業だ。" },
+    { go: "office" },
+  ],
+  p_q_ng2: [
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "cron か。動くけど、依存関係も再実行も全部手動になる。" },
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "dbt なら ref() で DAG を組んでくれる。……教えてやるよ。" },
+    { go: "office" },
+  ],
+  office: [
+    { bg: "office", c: "bucho", e: "normal", n: "部長", t: "みんな、新人の{name}さんだ。今日からデータ基盤チームに入ってもらう。" },
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "……さっきぶり。コーヒーの人。" },
+    { c: null, t: "コーヒーの人って呼ばないで……！" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "はじめまして！ 朝日悠真、BI 担当。Tableau のことなら何でも聞いて。ダッシュボードは芸術だよ！" },
+    { c: null, t: "オレンジ色の髪がよく似合う、太陽みたいな人。画面には色鮮やかなダッシュボードが並んでいる。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "氷室司。データ基盤リード。Snowflake の権限設計とコスト管理は全部俺を通せ。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "……それと、ウェアハウスを付けっぱなしにした者は、俺が直々に請求書を読み聞かせる。" },
+    { c: null, t: "こ、怖い……。でも、整った顔立ちで淡々と言われると妙に説得力がある。" },
+    { c: "bucho", e: "normal", n: "部長", t: "最初のタスクは誰かとペアでやってもらおう。誰につく？" },
+    { choice: [
+      { t: "蓮と dbt のモデルを作る", go: "ren_1", aff: { ren: 1 } },
+      { t: "悠真とダッシュボードを作る", go: "yuma_1", aff: { yuma: 1 } },
+      { t: "司と Snowflake の環境を触る", go: "tsukasa_1", aff: { tsukasa: 1 } },
+    ] },
+  ],
+  // ---------- 午前: 蓮 / dbt ----------
+  ren_1: [
+    { bg: "office", c: "ren", e: "normal", n: "水瀬 蓮", t: "じゃあ、注文テーブルの staging モデルから。……staging モデルの役割、言ってみて。" },
+    { choice: [
+      { t: "ソースを1対1で読み、リネームや型変換など軽い整形だけする", go: "ren_1_ok", aff: { ren: 3 }, q: true, ok: true },
+      { t: "複数テーブルを結合して売上のビジネスロジックを組む", go: "ren_1_ng", aff: { ren: 0 }, q: true },
+      { t: "ダッシュボード用に日別で集計しておく", go: "ren_1_ng", aff: { ren: 0 }, q: true },
+    ] },
+  ],
+  ren_1_ok: [
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "正解。staging は結合も集計もしない。ソースの『きれいなコピー』を作る層だ。" },
+    { go: "ren_2" },
+  ],
+  ren_1_ng: [
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "違う。それは intermediate や marts の仕事。staging でロジックを組むと、後で全部作り直しになる。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "staging はソース1つに対して1モデル。リネーム、型変換、それだけ。" },
+    { go: "ren_2" },
+  ],
+  ren_2: [
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "次。モデルの中で別のモデルを参照するとき、テーブル名を直接書かずに ref() を使う。なぜだと思う？" },
+    { choice: [
+      { t: "dbt が依存関係を解決して DAG を組み、実行順と環境ごとのスキーマを自動で切り替えるから", go: "ren_2_ok", aff: { ren: 3 }, q: true, ok: true },
+      { t: "クエリが速くなるから", go: "ren_2_ng", aff: { ren: 0 }, q: true },
+      { t: "ref() を使わないとコンパイルエラーになるから", go: "ren_2_ng", aff: { ren: 1 }, q: true },
+    ] },
+  ],
+  ren_2_ok: [
+    { c: "ren", e: "blush", n: "水瀬 蓮", t: "……完璧。開発環境では自分のスキーマ、本番では本番スキーマ。ref() が全部やってくれる。" },
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "君とは、いい DAG が組めそうだ。" },
+    { go: "lunch" },
+  ],
+  ren_2_ng: [
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "惜しい。速さは関係ない。ref() は依存関係の宣言だ。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "これがあるから dbt は正しい順番でモデルを作れるし、dbt docs で系統図も描ける。" },
+    { go: "lunch" },
+  ],
+  // ---------- 午前: 悠真 / Tableau ----------
+  yuma_1: [
+    { bg: "meeting", c: "yuma", e: "smile", n: "朝日 悠真", t: "よーし、売上ダッシュボード作ろう！ まず質問。顧客ごとの初回購入日を、どのビジュアルでも固定で出したい。何を使う？" },
+    { choice: [
+      { t: "LOD 式の { FIXED [顧客ID] : MIN([注文日]) }", go: "yuma_1_ok", aff: { yuma: 3 }, q: true, ok: true },
+      { t: "表計算の RUNNING_MIN", go: "yuma_1_ng", aff: { yuma: 1 }, q: true },
+      { t: "フィルターで最初の1件だけ残す", go: "yuma_1_ng", aff: { yuma: 0 }, q: true },
+    ] },
+  ],
+  yuma_1_ok: [
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "正解！ FIXED はビューの粒度に関係なく、指定したディメンションで集計してくれる。LOD 式を使いこなす新人、最高！" },
+    { go: "yuma_2" },
+  ],
+  yuma_1_ng: [
+    { c: "yuma", e: "normal", n: "朝日 悠真", t: "うーん、それだとビューの粒度が変わるたびに結果が変わっちゃう。" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "こういうときは LOD 式。{ FIXED [顧客ID] : MIN([注文日]) } って書けば、どのグラフでも同じ値が出る。覚えといて！" },
+    { go: "yuma_2" },
+  ],
+  yuma_2: [
+    { c: "yuma", e: "normal", n: "朝日 悠真", t: "次。このダッシュボード、Snowflake に直接つないでるんだけど、営業が『開くたび遅い』って言うんだ。どうする？" },
+    { choice: [
+      { t: "抽出（Extract）に切り替えて、更新スケジュールを設定する", go: "yuma_2_ok", aff: { yuma: 3 }, q: true, ok: true },
+      { t: "ライブ接続のまま、色数を減らす", go: "yuma_2_ng", aff: { yuma: 0 }, q: true },
+      { t: "営業に『我慢して』と伝える", go: "yuma_2_ng", aff: { yuma: 0 }, q: true },
+    ] },
+  ],
+  yuma_2_ok: [
+    { c: "yuma", e: "blush", n: "朝日 悠真", t: "そう！ リアルタイム性が要らないなら抽出。Hyper エンジンで爆速になるし、ウェアハウスのコストも減る。……司さんも喜ぶ。" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "{name}さん、センスあるなあ。" },
+    { go: "lunch" },
+  ],
+  yuma_2_ng: [
+    { c: "yuma", e: "sad", n: "朝日 悠真", t: "色は関係ないんだよね……。正解は抽出（Extract）。" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "ライブ接続は常に最新だけど、毎回クエリが飛ぶ。日次更新でいいなら抽出にして、Tableau Server でスケジュール更新。これ鉄則！" },
+    { go: "lunch" },
+  ],
+  // ---------- 午前: 司 / Snowflake ----------
+  tsukasa_1: [
+    { bg: "server", c: "tsukasa", e: "normal", n: "氷室 司", t: "Snowflake の基本から確認する。ウェアハウスのサイズを XS から L に上げると、何が変わる？" },
+    { choice: [
+      { t: "コンピュート資源が増え、1クエリの処理が速くなる。ストレージ容量は変わらない", go: "tsukasa_1_ok", aff: { tsukasa: 3 }, q: true, ok: true },
+      { t: "保存できるデータ量が増える", go: "tsukasa_1_ng", aff: { tsukasa: 0 }, q: true },
+      { t: "同時に実行できるクエリ数が増える", go: "tsukasa_1_ng2", aff: { tsukasa: 1 }, q: true },
+    ] },
+  ],
+  tsukasa_1_ok: [
+    { c: "tsukasa", e: "smile", n: "氷室 司", t: "正しい。Snowflake はストレージとコンピュートが分離している。サイズは一つのクエリに割く力であって、容量ではない。" },
+    { go: "tsukasa_2" },
+  ],
+  tsukasa_1_ng: [
+    { c: "tsukasa", e: "angry", n: "氷室 司", t: "違う。ストレージとコンピュートは分離している。ウェアハウスはただの計算機だ。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "サイズを上げれば一つのクエリが速くなる。ただしクレジットも倍々で増える。……覚えておけ。" },
+    { go: "tsukasa_2" },
+  ],
+  tsukasa_1_ng2: [
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "惜しいが違う。同時実行数を増やしたいならマルチクラスタウェアハウスだ。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "サイズは『一つのクエリの速さ』、クラスタ数は『同時にさばける数』。混同するな。" },
+    { go: "tsukasa_2" },
+  ],
+  tsukasa_2: [
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "次。誰かが本番テーブルを誤って TRUNCATE した。復旧の第一手は？" },
+    { choice: [
+      { t: "Time Travel で AT/BEFORE 句を使い、削除前の状態からテーブルを復元する", go: "tsukasa_2_ok", aff: { tsukasa: 3 }, q: true, ok: true },
+      { t: "昨日の CSV バックアップを探して再ロードする", go: "tsukasa_2_ng", aff: { tsukasa: 1 }, q: true },
+      { t: "ソースシステムから全件再連携を依頼する", go: "tsukasa_2_ng", aff: { tsukasa: 0 }, q: true },
+    ] },
+  ],
+  tsukasa_2_ok: [
+    { c: "tsukasa", e: "blush", n: "氷室 司", t: "……正解だ。保持期間内なら、UNDROP や CREATE TABLE ... CLONE ... AT で数秒で戻る。" },
+    { c: "tsukasa", e: "smile", n: "氷室 司", t: "慌てて CSV を探す新人が多い中で、君は冷静だな。……悪くない。" },
+    { go: "lunch" },
+  ],
+  tsukasa_2_ng: [
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "遅い。Snowflake には Time Travel がある。保持期間内なら、削除前の状態をクエリも復元もできる。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "Enterprise なら最大90日。……うちは本番テーブルは14日に設定してある。俺がな。" },
+    { go: "lunch" },
+  ],
+  // ---------- 昼 ----------
+  lunch: [
+    { bg: "office", c: null, t: "昼休み。社員食堂に向かう途中、三人がそれぞれ別の場所にいるのが見えた。" },
+    { choice: [
+      { t: "カフェスペースで蓮と昼を食べる", go: "ren_3", aff: { ren: 1 } },
+      { t: "会議室で悠真のダッシュボードを見る", go: "yuma_3", aff: { yuma: 1 } },
+      { t: "サーバールームで司のコスト分析を手伝う", go: "tsukasa_3", aff: { tsukasa: 1 } },
+    ] },
+  ],
+  ren_3: [
+    { bg: "cafe", c: "ren", e: "normal", n: "水瀬 蓮", t: "……ここ、見つかったか。昼は静かな場所で食べたいんだ。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "食べながらでいい。orders モデルの order_id に『null でない』『一意である』のテストを付けたい。どこに書く？" },
+    { choice: [
+      { t: "モデルの YAML（schema.yml など）の columns に not_null と unique を定義する", go: "ren_3_ok", aff: { ren: 3 }, q: true, ok: true },
+      { t: "モデルの SQL の末尾に WHERE order_id IS NOT NULL を足す", go: "ren_3_ng", aff: { ren: 0 }, q: true },
+      { t: "dbt_project.yml の materialized に書く", go: "ren_3_ng", aff: { ren: 0 }, q: true },
+    ] },
+  ],
+  ren_3_ok: [
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "正解。generic テストは YAML に宣言する。dbt test で全部まとめて走る。" },
+    { go: "ren_4" },
+  ],
+  ren_3_ng: [
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "それはテストじゃなくてデータの加工だ。テストは『期待と違ったら落とす』ためのもの。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "YAML の columns に tests: [not_null, unique]。これで dbt test が守ってくれる。" },
+    { go: "ren_4" },
+  ],
+  ren_4: [
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "もう一つ。イベントログのモデルを incremental にした。is_incremental() が true になるのは、どういうとき？" },
+    { choice: [
+      { t: "対象テーブルがすでに存在し、full-refresh でなく、materialized が incremental のとき", go: "ren_4_ok", aff: { ren: 3 }, q: true, ok: true },
+      { t: "dbt run を2回目以降に実行したとき、常に", go: "ren_4_ng", aff: { ren: 1 }, q: true },
+      { t: "テーブルの行数が増えたとき", go: "ren_4_ng", aff: { ren: 0 }, q: true },
+    ] },
+  ],
+  ren_4_ok: [
+    { c: "ren", e: "blush", n: "水瀬 蓮", t: "……完璧すぎて、ちょっと悔しい。" },
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "その条件のときだけ WHERE で差分を絞る。--full-refresh を付ければ全部作り直し。……君、本当に新人？" },
+    { go: "afternoon" },
+  ],
+  ren_4_ng: [
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "近いが、条件が足りない。--full-refresh を付けたら2回目でも false になる。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "『テーブルが存在する』『full-refresh でない』『incremental 設定』。三つ揃って true だ。" },
+    { go: "afternoon" },
+  ],
+  yuma_3: [
+    { bg: "meeting", c: "yuma", e: "smile", n: "朝日 悠真", t: "お、来てくれた！ 見てよこの地域別売上マップ。色、最高じゃない？" },
+    { c: "yuma", e: "normal", n: "朝日 悠真", t: "でも一個困ってて。このダッシュボード、開くのに30秒かかる。最初にやるべきことは？" },
+    { choice: [
+      { t: "パフォーマンスの記録（Performance Recording）を取って、遅いクエリやシートを特定する", go: "yuma_3_ok", aff: { yuma: 3 }, q: true, ok: true },
+      { t: "とりあえず全シートの色を減らす", go: "yuma_3_ng", aff: { yuma: 0 }, q: true },
+      { t: "全部のフィルターを削除する", go: "yuma_3_ng", aff: { yuma: 1 }, q: true },
+    ] },
+  ],
+  yuma_3_ok: [
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "正解！ 推測で直すより、まず計測。パフォーマンスレコーディングで『どのクエリが何秒か』が一目でわかる。" },
+    { go: "yuma_4" },
+  ],
+  yuma_3_ng: [
+    { c: "yuma", e: "sad", n: "朝日 悠真", t: "気持ちはわかるけど、当てずっぽうは危険。まずはパフォーマンスの記録を取って、ボトルネックを見つけるのが先。" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "だいたい犯人は『クイックフィルターの多すぎ』か『高カーディナリティの表計算』だよ。" },
+    { go: "yuma_4" },
+  ],
+  yuma_4: [
+    { c: "yuma", e: "normal", n: "朝日 悠真", t: "次！ 注文テーブルと、1注文に複数行ある配送テーブルを『結合（Join）』したら、売上合計が増えた。なんで？" },
+    { choice: [
+      { t: "1対多の結合で注文行が複製されて、売上が重複カウントされている。リレーションシップか LOD で粒度を揃える", go: "yuma_4_ok", aff: { yuma: 3 }, q: true, ok: true },
+      { t: "Tableau のバグなので再起動する", go: "yuma_4_ng", aff: { yuma: 0 }, q: true },
+      { t: "売上を2で割る計算フィールドを作る", go: "yuma_4_ng", aff: { yuma: 0 }, q: true },
+    ] },
+  ],
+  yuma_4_ok: [
+    { c: "yuma", e: "blush", n: "朝日 悠真", t: "うわ、完璧……。ファンアウトって言うんだけど、これに気づけない人が本当に多い。" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "リレーションシップなら粒度を保ったまま集計してくれる。{name}さん、一緒に仕事したい……！" },
+    { go: "afternoon" },
+  ],
+  yuma_4_ng: [
+    { c: "yuma", e: "sad", n: "朝日 悠真", t: "それやると経営会議で死ぬやつ……。正解は『結合で行が複製されてる』。" },
+    { c: "yuma", e: "normal", n: "朝日 悠真", t: "1対多を Join すると、1側の値が多側の行数分コピーされる。リレーションシップか、FIXED の LOD で粒度を揃えよう。" },
+    { go: "afternoon" },
+  ],
+  tsukasa_3: [
+    { bg: "server", c: "tsukasa", e: "normal", n: "氷室 司", t: "昼休みに来るとは。……まあいい。手伝え。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "10TB のイベントテーブルがある。特定の日付範囲のクエリが遅い。何を設定する？" },
+    { choice: [
+      { t: "event_date をクラスタリングキーに設定して、マイクロパーティションのプルーニングを効かせる", go: "tsukasa_3_ok", aff: { tsukasa: 3 }, q: true, ok: true },
+      { t: "B-tree インデックスを張る", go: "tsukasa_3_ng", aff: { tsukasa: 0 }, q: true },
+      { t: "ウェアハウスを 4XL にする", go: "tsukasa_3_ng2", aff: { tsukasa: 1 }, q: true },
+    ] },
+  ],
+  tsukasa_3_ok: [
+    { c: "tsukasa", e: "smile", n: "氷室 司", t: "正解。Snowflake にインデックスはない。あるのはマイクロパーティションと、その統計によるプルーニングだ。" },
+    { go: "tsukasa_4" },
+  ],
+  tsukasa_3_ng: [
+    { c: "tsukasa", e: "angry", n: "氷室 司", t: "Snowflake にインデックスは存在しない。……基本だ。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "大きなテーブルで絞り込み列が決まっているなら、クラスタリングキー。読むパーティションが減れば速くなる。" },
+    { go: "tsukasa_4" },
+  ],
+  tsukasa_3_ng2: [
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "金で殴る解決か。動くが、俺の請求書読み聞かせ対象になる。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "先にクラスタリングキーだ。読む量を減らせば、XS でも速くなる。" },
+    { go: "tsukasa_4" },
+  ],
+  tsukasa_4: [
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "次。分析チームが『本番と同じデータで検証したい』と言う。10TB をコピーすると時間もコストもかかる。どうする？" },
+    { choice: [
+      { t: "ゼロコピークローンでデータベースを CLONE する。ストレージは共有され、変更分だけ課金される", go: "tsukasa_4_ok", aff: { tsukasa: 3 }, q: true, ok: true },
+      { t: "CREATE TABLE AS SELECT で全件コピーする", go: "tsukasa_4_ng", aff: { tsukasa: 1 }, q: true },
+      { t: "本番環境を直接触らせる", go: "tsukasa_4_ng2", aff: { tsukasa: 0 }, q: true },
+    ] },
+  ],
+  tsukasa_4_ok: [
+    { c: "tsukasa", e: "blush", n: "氷室 司", t: "……正解だ。メタデータ操作だから数秒で終わる。コストも増えない。" },
+    { c: "tsukasa", e: "smile", n: "氷室 司", t: "君のような新人なら、ウェアハウスの管理を任せてもいい。……冗談だ。まだ早い。" },
+    { go: "afternoon" },
+  ],
+  tsukasa_4_ng: [
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "10TB のコピーに何時間かける気だ。ゼロコピークローンを使え。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "CLONE はストレージを複製しない。変更した分だけ新しく保存される。これが Snowflake の強みだ。" },
+    { go: "afternoon" },
+  ],
+  tsukasa_4_ng2: [
+    { c: "tsukasa", e: "angry", n: "氷室 司", t: "却下。本番を直接触らせる基盤リードはいない。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "ゼロコピークローンで検証用のコピーを作る。数秒で、コストはほぼゼロだ。" },
+    { go: "afternoon" },
+  ],
+  // ---------- 午後: 障害対応 ----------
+  afternoon: [
+    { bg: "office", c: "bucho", e: "surprised", n: "部長", t: "大変だ！ 経営会議が15分後なのに、売上ダッシュボードがおかしい！ 誰か見てくれ！" },
+    { c: null, t: "オフィスがざわつく。三人が同時に立ち上がった。\n……誰と一緒に対応する？" },
+    { choice: [
+      { t: "蓮と dbt のパイプラインを調べる", go: "ren_5", aff: { ren: 1 } },
+      { t: "悠真とダッシュボードを調べる", go: "yuma_5", aff: { yuma: 1 } },
+      { t: "司と Snowflake の状態を調べる", go: "tsukasa_5", aff: { tsukasa: 1 } },
+    ] },
+  ],
+  ren_5: [
+    { bg: "office", c: "ren", e: "normal", n: "水瀬 蓮", t: "朝の dbt build で、fct_sales の unique テストが落ちてた。通知を見逃してた……俺のミスだ。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "あと15分。{name}、君ならまず何をする？" },
+    { choice: [
+      { t: "失敗したテストのコンパイル済み SQL を実行して、重複している order_id を特定し、上流の結合条件を直す", go: "ren_5_ok", aff: { ren: 3 }, q: true, ok: true },
+      { t: "テストを削除して dbt run だけ回す", go: "ren_5_ng", aff: { ren: 0 }, q: true },
+      { t: "とりあえず --full-refresh で全部作り直す", go: "ren_5_ng2", aff: { ren: 1 }, q: true },
+    ] },
+  ],
+  ren_5_ok: [
+    { c: "ren", e: "surprised", n: "水瀬 蓮", t: "……そう、それだ。" },
+    { c: null, t: "target/compiled のテスト SQL を流すと、配送テーブルの結合で order_id が2倍になっていた。結合条件に shipment の最新フラグを足して、再実行。" },
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "会議3分前。……間に合った。君がいなかったら、今ごろ俺は部長に請求書を読み聞かせられてた。" },
+    { go: "meetup" },
+  ],
+  ren_5_ng: [
+    { c: "ren", e: "angry", n: "水瀬 蓮", t: "テストを消す？ それは問題を隠すだけだ。会議で倍の売上が出て、来月信用がなくなる。" },
+    { c: null, t: "蓮は自分でコンパイル済み SQL を流し、重複の原因を突き止めた。私は横で見ていることしかできなかった。" },
+    { go: "meetup" },
+  ],
+  ren_5_ng2: [
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "作り直しても、原因が結合なら同じ結果になる。先に原因だ。" },
+    { c: null, t: "蓮がコンパイル済みのテスト SQL を流すと、結合で行が倍になっていた。原因を直して、ぎりぎり間に合った。" },
+    { go: "meetup" },
+  ],
+  yuma_5: [
+    { bg: "meeting", c: "yuma", e: "surprised", n: "朝日 悠真", t: "売上が先月の2倍になってる！ こんなに売れてるわけない……！" },
+    { c: "yuma", e: "normal", n: "朝日 悠真", t: "{name}さん、どこから疑う？" },
+    { choice: [
+      { t: "データソースの結合を確認する。1対多の結合でレコードが重複していないか、行数を元テーブルと比較する", go: "yuma_5_ok", aff: { yuma: 3 }, q: true, ok: true },
+      { t: "売上を2で割る計算フィールドで応急処置する", go: "yuma_5_ng", aff: { yuma: 0 }, q: true },
+      { t: "ダッシュボードの更新ボタンを連打する", go: "yuma_5_ng", aff: { yuma: 0 }, q: true },
+    ] },
+  ],
+  yuma_5_ok: [
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "それだ！ 昨日、配送テーブルを Join で足したんだった……。" },
+    { c: null, t: "結合をリレーションシップに置き換えると、売上は正しい数字に戻った。会議2分前。" },
+    { c: "yuma", e: "blush", n: "朝日 悠真", t: "{name}さんがいなかったら、僕、経営会議で公開処刑だった。……本当にありがとう。" },
+    { go: "meetup" },
+  ],
+  yuma_5_ng: [
+    { c: "yuma", e: "sad", n: "朝日 悠真", t: "それは……やっちゃダメなやつ。数字を『それっぽく』直したら、もう誰も信じてくれなくなる。" },
+    { c: null, t: "悠真は結合を見直し、配送テーブルとの Join で行が重複していたことを突き止めた。私は横で見ていることしかできなかった。" },
+    { go: "meetup" },
+  ],
+  tsukasa_5: [
+    { bg: "server", c: "tsukasa", e: "normal", n: "氷室 司", t: "ダッシュボードの数字は正しい。問題は、更新クエリがウェアハウスのキューで詰まっていて、昨日の数字のまま表示されていることだ。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "朝の会議ラッシュで、同時実行が限界を超えている。どうする？" },
+    { choice: [
+      { t: "マルチクラスタウェアハウスを有効化して同時実行をさばく。あわせて BI 用と ETL 用でウェアハウスを分ける", go: "tsukasa_5_ok", aff: { tsukasa: 3 }, q: true, ok: true },
+      { t: "ウェアハウスのサイズを 4XL に上げる", go: "tsukasa_5_ng", aff: { tsukasa: 1 }, q: true },
+      { t: "全社員にログアウトを依頼する", go: "tsukasa_5_ng2", aff: { tsukasa: 0 }, q: true },
+    ] },
+  ],
+  tsukasa_5_ok: [
+    { c: "tsukasa", e: "surprised", n: "氷室 司", t: "……正解だ。サイズではなく、クラスタ数。それに、ワークロードの分離。" },
+    { c: null, t: "マルチクラスタを有効にすると、キューはみるみる消えていった。会議1分前、ダッシュボードが今日の数字に切り替わる。" },
+    { c: "tsukasa", e: "smile", n: "氷室 司", t: "……君を、俺の後任にしてもいいかもしれない。冗談ではなく。" },
+    { go: "meetup" },
+  ],
+  tsukasa_5_ng: [
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "サイズを上げても、一つのクエリが速くなるだけでキューは減らない。クレジットだけが燃える。" },
+    { c: null, t: "司はマルチクラスタウェアハウスを有効化し、キューを一気に解消した。私は横で見ていることしかできなかった。" },
+    { go: "meetup" },
+  ],
+  tsukasa_5_ng2: [
+    { c: "tsukasa", e: "angry", n: "氷室 司", t: "却下。基盤の問題を利用者に押し付けるな。" },
+    { c: null, t: "司はマルチクラスタウェアハウスを有効化し、キューを一気に解消した。私は横で見ていることしかできなかった。" },
+    { go: "meetup" },
+  ],
+  // ---------- 社内データ勉強会 → 告白 ----------
+  meetup: [
+    { bg: "stage", c: null, t: "三ヶ月後。\n社内データ勉強会「DATA MEETUP」の日。私は初めての LT で、入社初日の障害対応の話をした。" },
+    { c: null, t: "拍手の中、ステージを降りる。\n……そのあとの打ち上げで、誰かが私を呼び止めた。" },
+    { branch: true },
+  ],
+  ren_confess: [
+    { bg: "roof", c: "ren", e: "normal", n: "水瀬 蓮", t: "{name}。……屋上、来てくれると思った。" },
+    { c: "ren", e: "sad", n: "水瀬 蓮", t: "俺はずっと、人よりモデルの依存関係のほうが分かりやすいと思ってた。人間には ref() がないから。" },
+    { c: "ren", e: "normal", n: "水瀬 蓮", t: "でも、コーヒーをかけてきた君と DAG を組んで、テストを直して……気づいたら、君が上流にいた。" },
+    { c: "ren", e: "blush", n: "水瀬 蓮", t: "{name}。俺は、君が好きだ。……この依存関係、循環しててもいい。" },
+    { choice: [
+      { t: "「私も、蓮が好き」", go: "ren_happy" },
+      { t: "「……まだ、テストが通ってない」", go: "ren_normal" },
+    ] },
+  ],
+  ren_happy: [
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "……よかった。dbt test、全部グリーンだ。" },
+    { c: "ren", e: "blush", n: "水瀬 蓮", t: "明日から、毎朝エレベーターで待ってる。コーヒーはこぼすなよ。" },
+    { end: "ren_happy", title: "循環参照でもいい", text: "dbt 職人・蓮と結ばれたハッピーエンド。\n翌朝、エレベーターの前には、二人分のコーヒーを持った蓮が立っていた。" },
+  ],
+  ren_normal: [
+    { c: "ren", e: "sad", n: "水瀬 蓮", t: "……そっか。" },
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "いいよ。テストが通るまで、何度でも build する。俺はそういう仕事をしてる。" },
+    { end: "ren_normal", title: "テストは、まだ赤い", text: "蓮との関係は、もう少しだけ続く。\n知識問題に正解して好感度を上げ、もう一度告白を聞いてみよう。" },
+  ],
+  yuma_confess: [
+    { bg: "bar", c: "yuma", e: "normal", n: "朝日 悠真", t: "{name}さん、ちょっとだけ外に……って、ここでいいか。" },
+    { c: "yuma", e: "blush", n: "朝日 悠真", t: "僕、ダッシュボードは誰よりきれいに作れる自信があるんだ。でも、自分の気持ちだけはずっと可視化できなかった。" },
+    { c: "yuma", e: "blush", n: "朝日 悠真", t: "障害対応のとき、隣にいてくれた{name}さんを見て、やっとわかった。\n……好きです。僕の人生のダッシュボードに、ずっといてほしい。" },
+    { choice: [
+      { t: "「私も、悠真が好き」", go: "yuma_happy" },
+      { t: "「もう少し、データを集めさせて」", go: "yuma_normal" },
+    ] },
+  ],
+  yuma_happy: [
+    { c: "yuma", e: "surprised", n: "朝日 悠真", t: "……本当に？" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "やった……！ 明日、記念のダッシュボード作る！ 色は{name}さんの好きな色で！" },
+    { end: "yuma_happy", title: "FIXED [二人] : MAX(幸せ)", text: "Tableau の魔術師・悠真と結ばれたハッピーエンド。\n翌朝、Slack に『二人の記念日カウントダウン』ダッシュボードが届いた。" },
+  ],
+  yuma_normal: [
+    { c: "yuma", e: "sad", n: "朝日 悠真", t: "……うん、わかった。" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "じゃあ、サンプルサイズが足りるまで、毎日ランチに誘うね。統計的に有意になるまで！" },
+    { end: "yuma_normal", title: "サンプルサイズ不足", text: "悠真との関係は保留のまま続く。\n知識問題に正解して好感度を上げ、もう一度告白を聞いてみよう。" },
+  ],
+  tsukasa_confess: [
+    { bg: "night", c: "tsukasa", e: "normal", n: "氷室 司", t: "{name}。打ち上げを抜けてきた。……少し歩こう。" },
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "俺は基盤を守る人間だ。権限は最小、コストは最適、感情は不要。そう思っていた。" },
+    { c: "tsukasa", e: "blush", n: "氷室 司", t: "だが、君が来てから俺のウェアハウスは自動サスペンドしなくなった。……ずっと、君のことを考えて動いている。" },
+    { c: "tsukasa", e: "blush", n: "氷室 司", t: "責任を取れ。俺の隣で、一緒に基盤を守ってほしい。……私人としても、だ。" },
+    { choice: [
+      { t: "「はい。権限、付与してください」", go: "tsukasa_happy" },
+      { t: "「少し、考えさせてください」", go: "tsukasa_normal" },
+    ] },
+  ],
+  tsukasa_happy: [
+    { c: "tsukasa", e: "smile", n: "氷室 司", t: "……いい返事だ。ロールは ACCOUNTADMIN……は冗談として、俺の隣の席を付与する。" },
+    { c: "tsukasa", e: "blush", n: "氷室 司", t: "明日から、遅刻は俺が直々に取り締まる。毎朝、エレベーターで待っている。" },
+    { end: "tsukasa_happy", title: "GRANT ALL ON 心 TO 君", text: "Snowflake の守護者・司と結ばれたハッピーエンド。\n翌朝、エレベーターの前で、司が自分で淹れたコーヒーを差し出してきた。" },
+  ],
+  tsukasa_normal: [
+    { c: "tsukasa", e: "normal", n: "氷室 司", t: "……わかった。期限は設けない。Time Travel の保持期間よりは、長く待てる。" },
+    { c: "tsukasa", e: "smile", n: "氷室 司", t: "だが、毎朝コーヒーは持っていく。覚悟しておけ。" },
+    { end: "tsukasa_normal", title: "保持期間は無期限", text: "司との関係は保留のまま続く。\n知識問題に正解して好感度を上げ、もう一度告白を聞いてみよう。" },
+  ],
+  friend_end: [
+    { bg: "bar", c: null, t: "振り返ると、蓮も悠真も司も、みんながそこにいた。" },
+    { c: "yuma", e: "smile", n: "朝日 悠真", t: "{name}さんの LT、最高だったよ！ 乾杯しよう！" },
+    { c: "ren", e: "smile", n: "水瀬 蓮", t: "……入社して、初めて楽しいと思った勉強会だ。" },
+    { c: "tsukasa", e: "smile", n: "氷室 司", t: "来期は、もっと大きな基盤を作るぞ。コストは俺が見る。" },
+    { c: null, t: "恋はまだ始まっていないけど、きっとこれから。\n……まずは、dbt と Tableau と Snowflake をもっと勉強しよう。" },
+    { end: "friend", title: "チームで見たダッシュボード", text: "誰とも結ばれなかった、チームエンド。\n一人に絞って知識問題に正解し続けると、告白イベントが起きるかも？" },
+  ],
+};
+const ENDINGS = ["ren_happy", "ren_normal", "yuma_happy", "yuma_normal", "tsukasa_happy", "tsukasa_normal", "friend"];
+const THRESHOLD = 11;
+
+// ===================== エンジン =====================
+const $ = id => document.getElementById(id);
+let G = null, typing = null, logLines = [], unlocked = [];
+try { unlocked = JSON.parse(localStorage.getItem("data-otome-endings")) || []; } catch {}
+function save() { try { localStorage.setItem("data-otome-save", JSON.stringify(G)); } catch {} }
+function fmt(t) { return t.replace(/{name}/g, G.name); }
+
+function startNew(name) { G = { name, scene: "prologue", i: 0, aff: { ren: 0, yuma: 0, tsukasa: 0 }, quiz: 0, correct: 0, curChar: null, curExpr: null, bg: "lobby" }; logLines = []; $("title").classList.remove("show"); $("hearts").style.display = "block"; applyBg(G.bg, true); showChar(null); run(); }
+function load() { try { const s = JSON.parse(localStorage.getItem("data-otome-save")); if (s && SCRIPT[s.scene]) { G = s; logLines = []; $("title").classList.remove("show"); $("hearts").style.display = "block"; applyBg(G.bg, true); showChar(G.curChar, G.curExpr); run(); return; } } catch {} }
+
+function applyBg(bg, instant) { const el = $("bg"); if (instant) { el.className = "bg-" + bg; return; } el.style.opacity = 0; setTimeout(() => { el.className = "bg-" + bg; el.style.opacity = 1; }, 250); }
+function showChar(id, expr) {
+  const el = $("charL");
+  if (!id) { el.classList.remove("show"); G && (G.curChar = null); return; }
+  el.innerHTML = sprite(id, expr || "normal"); el.classList.add("show"); el.classList.remove("talk"); void el.offsetWidth; el.classList.add("talk");
+  G.curChar = id; G.curExpr = expr || "normal";
+}
+function hearts() { $("hearts").innerHTML = ["ren", "yuma", "tsukasa"].map(k => `<span style="color:${CHARS[k].color}">${CHARS[k].name.split(" ")[1]}<small style="opacity:.7">${CHARS[k].skill}</small> ${"♥".repeat(Math.min(5, Math.ceil(G.aff[k] / 2.4)))}${"♡".repeat(Math.max(0, 5 - Math.ceil(G.aff[k] / 2.4)))}</span>`).join("　"); }
+
+function run() {
+  hearts(); save();
+  const line = SCRIPT[G.scene][G.i];
+  if (!line) return;
+  if (line.go) { G.scene = line.go; G.i = 0; return run(); }
+  if (line.branch) {
+    const best = Object.entries(G.aff).sort((a, b) => b[1] - a[1])[0];
+    G.scene = best[1] >= THRESHOLD ? best[0] + "_confess" : "friend_end"; G.i = 0; return run();
+  }
+  if (line.end) return showEnding(line);
+  if (line.choice) return showChoices(line.choice);
+  if (line.bg && line.bg !== G.bg) { G.bg = line.bg; applyBg(line.bg); }
+  if ("c" in line) showChar(line.c, line.e);
+  if (line.fx === "shake") { $("stage").classList.remove("shake"); void $("stage").offsetWidth; $("stage").classList.add("shake"); if (navigator.vibrate) navigator.vibrate(80); }
+  if (line.fx === "flash") { $("flash").classList.remove("on"); void $("flash").offsetWidth; $("flash").classList.add("on"); }
+  if (line.t === undefined) { G.i++; return run(); }
+  const name = $("name"); if (line.n) { name.textContent = line.n; name.classList.add("show"); } else name.classList.remove("show");
+  $("text").className = line.n ? "" : "narr";
+  typeText(fmt(line.t));
+  logLines.push({ n: line.n, t: fmt(line.t) }); if (logLines.length > 60) logLines.shift();
+}
+function typeText(t) {
+  clearInterval(typing); const el = $("text"); el.textContent = ""; $("arrow").style.visibility = "hidden"; let i = 0;
+  typing = setInterval(() => { el.textContent = t.slice(0, ++i); if (i >= t.length) { clearInterval(typing); typing = null; $("arrow").style.visibility = "visible"; } }, 28);
+  typing.full = t;
+}
+function advance() {
+  if (!G || $("choices").classList.contains("show") || $("ending").classList.contains("show") || $("log").classList.contains("show")) return;
+  if (typing) { clearInterval(typing); const l = SCRIPT[G.scene][G.i]; $("text").textContent = fmt(l.t); typing = null; $("arrow").style.visibility = "visible"; return; }
+  G.i++; run();
+}
+function showChoices(list) {
+  const box = $("choices"); box.innerHTML = ""; box.classList.add("show");
+  list.forEach((ch, k) => {
+    const b = document.createElement("button"); b.textContent = ch.t; b.style.animationDelay = k * 0.08 + "s"; if (ch.q) b.classList.add("q");
+    b.addEventListener("click", e => { e.stopPropagation(); for (const [c, v] of Object.entries(ch.aff || {})) G.aff[c] += v; if (ch.q) { G.quiz++; if (ch.ok) G.correct++; } box.classList.remove("show"); logLines.push({ n: "▶ 選択", t: ch.t }); G.scene = ch.go; G.i = 0; run(); });
+    box.appendChild(b);
+  });
+}
+function showEnding(line) {
+  if (!unlocked.includes(line.end)) { unlocked.push(line.end); try { localStorage.setItem("data-otome-endings", JSON.stringify(unlocked)); } catch {} }
+  try { localStorage.removeItem("data-otome-save"); } catch {}
+  $("endTitle").textContent = line.title; $("endText").textContent = line.text; $("endScore").textContent = `データ知識問題: ${G.correct} / ${G.quiz} 正解`; $("ending").classList.add("show");
+}
+function toTitle() { $("ending").classList.remove("show"); $("hearts").style.display = "none"; showChar(null); $("title").classList.add("show"); renderTitle(); }
+function renderTitle() {
+  let has = false; try { has = !!localStorage.getItem("data-otome-save"); } catch {}
+  $("contBtn").style.display = has ? "block" : "none";
+  const names = { ren_happy: "循環参照でもいい", ren_normal: "テストは、まだ赤い", yuma_happy: "FIXED [二人] : MAX(幸せ)", yuma_normal: "サンプルサイズ不足", tsukasa_happy: "GRANT ALL ON 心 TO 君", tsukasa_normal: "保持期間は無期限", friend: "チームで見たダッシュボード" };
+  $("endList").innerHTML = `エンディング ${unlocked.length} / ${ENDINGS.length}<br>` + ENDINGS.map(e => unlocked.includes(e) ? "★ " + names[e] : "☆ ？？？").join("<br>");
+}
+
+// ===== イベント =====
+$("stage").addEventListener("click", e => { if (e.target.closest("button, a, input, .screen, #choices")) return; advance(); });
+addEventListener("keydown", e => { if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); advance(); } });
+$("newBtn").addEventListener("click", () => { const n = $("nameInput").value.trim() || "結衣"; try { localStorage.setItem("data-otome-name", n); } catch {} startNew(n); });
+$("contBtn").addEventListener("click", load);
+$("endBack").addEventListener("click", toTitle);
+$("titleBtn").addEventListener("click", () => { if (confirm("タイトルに戻りますか？（進行状況は自動保存されています）")) toTitle(); });
+$("logBtn").addEventListener("click", () => { $("logBody").innerHTML = logLines.map(l => `<div class="l">${l.n ? `<b>${l.n}</b><br>` : ""}${l.t.replace(/\n/g, "<br>")}</div>`).join("") || "<div class='l'>まだログはありません</div>"; $("log").classList.add("show"); });
+$("logClose").addEventListener("click", () => $("log").classList.remove("show"));
+try { $("nameInput").value = localStorage.getItem("data-otome-name") || ""; } catch {}
+renderTitle();
+</script>
+<script>
+(function () {
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+})();
+</script>
+</body>
+</html>
