@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>テトリス</title>
+<style>
+  :root { --bg: #0e1020; --panel: #1b1e36; --text: #f4f5ff; --sub: #9aa0c8; --accent: #4fd1ff; }
+  * { box-sizing: border-box; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+  body { background: radial-gradient(ellipse at top, #1d2250, var(--bg) 60%); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif; -webkit-user-select: none; user-select: none; display: flex; justify-content: center; }
+  .app { width: 100%; max-width: 480px; height: 100%; display: flex; flex-direction: column; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); gap: 8px; }
+  header { display: flex; align-items: center; gap: 8px; }
+  header a { color: inherit; text-decoration: none; font-size: 22px; }
+  h1 { font-size: 17px; margin: 0; flex: 1; }
+  .iconbtn { background: var(--panel); border: 0; color: var(--text); border-radius: 999px; height: 34px; padding: 0 14px; font-size: 14px; }
+
+  .main { flex: 1; display: flex; gap: 10px; min-height: 0; }
+  .boardwrap { flex: 1; display: flex; justify-content: center; align-items: center; min-width: 0; position: relative; }
+  canvas { display: block; border-radius: 6px; }
+  #board { background: #0a0c1a; box-shadow: 0 0 0 2px #2a2f5a, 0 0 30px #4fd1ff33; touch-action: none; }
+  .side { width: 96px; display: flex; flex-direction: column; gap: 8px; }
+  .box { background: var(--panel); border-radius: 12px; padding: 8px; text-align: center; }
+  .box .lbl { font-size: 11px; color: var(--sub); }
+  .box .val { font-size: 20px; font-weight: bold; }
+  .box .val.small { font-size: 15px; }
+  #next { width: 80px; height: 56px; margin: 4px auto 0; }
+
+  .controls { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .controls button { border: 0; border-radius: 12px; background: var(--panel); color: var(--text); font-size: 22px; height: 54px; touch-action: none; }
+  .controls button:active { background: #2e3466; }
+  .hint { font-size: 11px; color: var(--sub); text-align: center; line-height: 1.5; }
+
+  .modal-bg { position: fixed; inset: 0; background: #000b; display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50; }
+  .modal-bg.show { display: flex; }
+  .modal { background: var(--panel); border-radius: 20px; padding: 24px 18px; width: 100%; max-width: 340px; text-align: center; }
+  .modal h2 { margin: 0 0 8px; font-size: 24px; }
+  .modal .big { font-size: 42px; font-weight: bold; color: var(--accent); }
+  .modal p { color: var(--sub); margin: 6px 0; font-size: 14px; }
+  .modal .row { display: flex; gap: 10px; margin-top: 16px; }
+  .modal button { flex: 1; border: 0; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: bold; color: #fff; background: #3b4a6b; }
+  .modal button.primary { background: var(--accent); color: #06111c; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <a href="../../" aria-label="ゲーム一覧へ">‹</a>
+    <h1>🧱 テトリス</h1>
+    <button class="iconbtn" id="pause">⏸ 一時停止</button>
+  </header>
+
+  <div class="main">
+    <div class="boardwrap"><canvas id="board"></canvas></div>
+    <div class="side">
+      <div class="box"><div class="lbl">NEXT</div><canvas id="next"></canvas></div>
+      <div class="box"><div class="lbl">スコア</div><div class="val" id="score">0</div></div>
+      <div class="box"><div class="lbl">ライン</div><div class="val" id="lines">0</div></div>
+      <div class="box"><div class="lbl">レベル</div><div class="val" id="level">1</div></div>
+      <div class="box"><div class="lbl">ベスト</div><div class="val small" id="best">0</div></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button data-a="left" aria-label="左">◀</button>
+    <button data-a="rotl" aria-label="左回転">⟲</button>
+    <button data-a="rotr" aria-label="右回転">⟳</button>
+    <button data-a="right" aria-label="右">▶</button>
+    <button data-a="hard" aria-label="ハードドロップ">⤓</button>
+  </div>
+  <div class="hint">盤面を <b>タップで回転</b> ・ <b>長押しで高速落下</b> ・ 横にドラッグで移動 ・ 下に素早くスワイプで一気に落とす</div>
+</div>
+
+<div class="modal-bg" id="startModal"><div class="modal">
+  <h2>🧱 テトリス</h2>
+  <p>盤面をタップで回転、長押しで高速落下。<br>横ドラッグで左右移動。</p>
+  <div class="row"><button class="primary" id="startBtn">スタート</button></div>
+</div></div>
+<div class="modal-bg" id="overModal"><div class="modal">
+  <h2>GAME OVER</h2>
+  <div class="big" id="finalScore">0</div>
+  <p id="finalInfo"></p>
+  <div class="row"><button id="toTop">一覧へ</button><button class="primary" id="retry">もう一度</button></div>
+</div></div>
+<div class="modal-bg" id="pauseModal"><div class="modal">
+  <h2>⏸ 一時停止</h2>
+  <div class="row"><button id="pauseQuit">やめる</button><button class="primary" id="resume">再開</button></div>
+</div></div>
+
+<script>
+// ===== 定数 =====
+const COLS = 10, ROWS = 20;
+const SHAPES = {
+  I: [[0,1],[1,1],[2,1],[3,1]], O: [[1,0],[2,0],[1,1],[2,1]], T: [[1,0],[0,1],[1,1],[2,1]],
+  S: [[1,0],[2,0],[0,1],[1,1]], Z: [[0,0],[1,0],[1,1],[2,1]], J: [[0,0],[0,1],[1,1],[2,1]], L: [[2,0],[0,1],[1,1],[2,1]],
+};
+const COLORS = { I: "#4fd1ff", O: "#ffd54a", T: "#c45bff", S: "#5bffb0", Z: "#ff5b7a", J: "#5b8cff", L: "#ff9f43" };
+const SIZE = { I: 4, O: 4, T: 3, S: 3, Z: 3, J: 3, L: 3 }; // 回転用の正方形サイズ
+const KICKS = [[0,0],[-1,0],[1,0],[-2,0],[2,0],[0,-1],[-1,-1],[1,-1]];
+const SPEEDS = [800, 720, 630, 550, 470, 380, 300, 220, 160, 120, 100, 85, 70, 60, 50];
+
+// ===== 状態 =====
+const $ = id => document.getElementById(id);
+let board, cur, next, bag = [], score, lines, level, best = 0, over = false, paused = false, started = false;
+let dropAcc = 0, lastT = 0, softDrop = false, clearing = null, lockDelay = 0, shake = 0;
+try { best = +localStorage.getItem("tetris-best") || 0; } catch {}
+$("best").textContent = best;
+
+function refill() { const b = Object.keys(SHAPES); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } bag.push(...b); }
+function take() { if (bag.length < 2) refill(); return bag.shift(); }
+function makePiece(t) { return { t, cells: SHAPES[t].map(c => c.slice()), x: 3, y: t === "I" ? -1 : 0, rot: 0 }; }
+function newGame() {
+  board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+  bag = []; score = 0; lines = 0; level = 1; over = false; paused = false; started = true; clearing = null; dropAcc = 0; softDrop = false;
+  next = take(); spawn(); updateHud(); lastT = performance.now();
+}
+function spawn() { cur = makePiece(next); next = take(); drawNext(); if (collides(cur, 0, 0)) gameOver(); }
+function collides(p, dx, dy, cells = p.cells) {
+  for (const [cx, cy] of cells) { const x = p.x + cx + dx, y = p.y + cy + dy; if (x < 0 || x >= COLS || y >= ROWS) return true; if (y >= 0 && board[y][x]) return true; }
+  return false;
+}
+function move(dx) { if (!cur || over || clearing) return false; if (!collides(cur, dx, 0)) { cur.x += dx; return true; } return false; }
+function rotate(dir) {
+  if (!cur || over || clearing || cur.t === "O") return;
+  const n = SIZE[cur.t];
+  const cells = cur.cells.map(([x, y]) => dir > 0 ? [n - 1 - y, x] : [y, n - 1 - x]);
+  for (const [kx, ky] of KICKS) if (!collides(cur, kx, ky, cells)) { cur.cells = cells; cur.x += kx; cur.y += ky; return; }
+}
+function hardDrop() { if (!cur || over || clearing) return; let d = 0; while (!collides(cur, 0, d + 1)) d++; cur.y += d; score += d * 2; shake = 6; lock(); }
+function step() { if (!collides(cur, 0, 1)) { cur.y++; if (softDrop) score += 1; return true; } lock(); return false; }
+function lock() {
+  for (const [cx, cy] of cur.cells) { const y = cur.y + cy, x = cur.x + cx; if (y < 0) { gameOver(); return; } board[y][x] = cur.t; }
+  const full = []; for (let y = 0; y < ROWS; y++) if (board[y].every(Boolean)) full.push(y);
+  cur = null;
+  if (full.length) { clearing = { rows: full, t: 0 }; if (navigator.vibrate) navigator.vibrate(full.length === 4 ? [40, 30, 80] : 30); }
+  else spawn();
+  updateHud();
+}
+function finishClear() {
+  const n = clearing.rows.length;
+  for (const y of clearing.rows) { board.splice(y, 1); board.unshift(Array(COLS).fill(null)); }
+  score += [0, 100, 300, 500, 800][n] * level; lines += n; level = Math.floor(lines / 10) + 1;
+  clearing = null; spawn(); updateHud();
+}
+function gameOver() {
+  over = true; cur = null;
+  if (score > best) { best = score; try { localStorage.setItem("tetris-best", best); } catch {} }
+  $("finalScore").textContent = score; $("finalInfo").textContent = `ライン ${lines} ・ レベル ${level} ・ ベスト ${best}`;
+  setTimeout(() => $("overModal").classList.add("show"), 300);
+}
+function updateHud() { $("score").textContent = score; $("lines").textContent = lines; $("level").textContent = level; $("best").textContent = Math.max(best, score); }
+
+// ===== ループ =====
+function loop(now) {
+  const dt = Math.min(100, now - lastT); lastT = now;
+  if (started && !over && !paused) {
+    if (clearing) { clearing.t += dt; if (clearing.t > 220) finishClear(); }
+    else if (cur) {
+      const interval = softDrop ? 35 : SPEEDS[Math.min(level - 1, SPEEDS.length - 1)];
+      dropAcc += dt;
+      while (dropAcc >= interval) { dropAcc -= interval; if (!step()) { dropAcc = 0; break; } }
+    }
+  }
+  draw(); requestAnimationFrame(loop);
+}
+
+// ===== 描画 =====
+const cv = $("board"), ctx = cv.getContext("2d"), ncv = $("next"), nctx = ncv.getContext("2d");
+let cell = 20;
+function fit() {
+  const wrap = cv.parentElement, availW = wrap.clientWidth, availH = wrap.clientHeight;
+  cell = Math.floor(Math.min(availW / COLS, availH / ROWS));
+  const dpr = devicePixelRatio || 1;
+  cv.width = COLS * cell * dpr; cv.height = ROWS * cell * dpr; cv.style.width = COLS * cell + "px"; cv.style.height = ROWS * cell + "px";
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ncv.width = 80 * dpr; ncv.height = 56 * dpr; nctx.setTransform(dpr, 0, 0, dpr, 0, 0); drawNext();
+}
+addEventListener("resize", fit);
+function block(c, x, y, s, color, ghost) {
+  if (ghost) { c.strokeStyle = color; c.lineWidth = 2; c.globalAlpha = .45; c.strokeRect(x + 2, y + 2, s - 4, s - 4); c.globalAlpha = 1; return; }
+  c.fillStyle = color; c.fillRect(x + 1, y + 1, s - 2, s - 2);
+  c.fillStyle = "#ffffff55"; c.fillRect(x + 1, y + 1, s - 2, 3); c.fillRect(x + 1, y + 1, 3, s - 2);
+  c.fillStyle = "#00000044"; c.fillRect(x + 1, y + s - 4, s - 2, 3); c.fillRect(x + s - 4, y + 1, 3, s - 2);
+}
+function draw() {
+  const W = COLS * cell, H = ROWS * cell;
+  ctx.save();
+  if (shake > 0) { ctx.translate(0, (shake % 2 ? 1 : -1) * shake * 0.6); shake--; }
+  ctx.fillStyle = "#0a0c1a"; ctx.fillRect(-10, -10, W + 20, H + 20);
+  ctx.strokeStyle = "#1c2040"; ctx.lineWidth = 1;
+  for (let x = 1; x < COLS; x++) { ctx.beginPath(); ctx.moveTo(x * cell, 0); ctx.lineTo(x * cell, H); ctx.stroke(); }
+  for (let y = 1; y < ROWS; y++) { ctx.beginPath(); ctx.moveTo(0, y * cell); ctx.lineTo(W, y * cell); ctx.stroke(); }
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (board[y] && board[y][x]) {
+    if (clearing && clearing.rows.includes(y)) { const f = (clearing.t / 60 | 0) % 2; ctx.fillStyle = f ? "#fff" : COLORS[board[y][x]]; ctx.fillRect(x * cell + 1, y * cell + 1, cell - 2, cell - 2); }
+    else block(ctx, x * cell, y * cell, cell, COLORS[board[y][x]]);
+  }
+  if (cur) {
+    let g = 0; while (!collides(cur, 0, g + 1)) g++;
+    for (const [cx, cy] of cur.cells) { const y = cur.y + cy + g; if (y >= 0) block(ctx, (cur.x + cx) * cell, y * cell, cell, COLORS[cur.t], true); }
+    for (const [cx, cy] of cur.cells) { const y = cur.y + cy; if (y >= 0) block(ctx, (cur.x + cx) * cell, y * cell, cell, COLORS[cur.t]); }
+  }
+  if (softDrop && cur) { ctx.fillStyle = "#4fd1ff22"; ctx.fillRect(0, 0, W, H); }
+  ctx.restore();
+}
+function drawNext() {
+  nctx.clearRect(0, 0, 80, 56); if (!next) return;
+  const s = 14, cells = SHAPES[next], w = (Math.max(...cells.map(c => c[0])) + 1) * s, h = (Math.max(...cells.map(c => c[1])) + 1) * s;
+  for (const [x, y] of cells) block(nctx, (80 - w) / 2 + x * s, (56 - h) / 2 + y * s, s, COLORS[next]);
+}
+
+// ===== 入力: 盤面のタッチ =====
+let touch = null;
+cv.addEventListener("pointerdown", e => {
+  e.preventDefault(); if (!started || over || paused) return;
+  cv.setPointerCapture(e.pointerId);
+  touch = { x: e.clientX, y: e.clientY, t: performance.now(), moved: false, long: false, lastCol: 0,
+    timer: setTimeout(() => { if (touch && !touch.moved) { touch.long = true; softDrop = true; dropAcc = 0; } }, 180) };
+});
+cv.addEventListener("pointermove", e => {
+  if (!touch) return; e.preventDefault();
+  const dx = e.clientX - touch.x, dy = e.clientY - touch.y;
+  if (!touch.moved && Math.hypot(dx, dy) > 12) { touch.moved = true; clearTimeout(touch.timer); if (touch.long) { touch.long = false; softDrop = false; } }
+  if (touch.moved && !touch.long) {
+    const col = Math.trunc(dx / (cell * 0.9));
+    while (touch.lastCol < col) { if (!move(1)) break; touch.lastCol++; }
+    while (touch.lastCol > col) { if (!move(-1)) break; touch.lastCol--; }
+  }
+});
+const endTouch = e => {
+  if (!touch) return; e.preventDefault();
+  clearTimeout(touch.timer); softDrop = false;
+  const dt = performance.now() - touch.t, dy = e.clientY - touch.y, dx = e.clientX - touch.x;
+  if (!touch.moved && !touch.long) rotate(1);                                   // タップ = 回転
+  else if (touch.moved && dy > 60 && Math.abs(dx) < dy / 2 && dy / dt > 0.25) hardDrop(); // 下フリック = ハードドロップ
+  touch = null;
+};
+cv.addEventListener("pointerup", endTouch); cv.addEventListener("pointercancel", endTouch);
+for (const t of ["touchstart", "touchmove", "touchend"]) cv.addEventListener(t, e => e.preventDefault(), { passive: false });
+
+// ===== 入力: ボタン / キーボード =====
+const ACTIONS = { left: () => move(-1), right: () => move(1), rotl: () => rotate(-1), rotr: () => rotate(1), hard: hardDrop };
+document.querySelectorAll(".controls button").forEach(b => {
+  let rep = null;
+  const start = e => { e.preventDefault(); if (!started || over || paused) return; ACTIONS[b.dataset.a](); if (b.dataset.a === "left" || b.dataset.a === "right") rep = setInterval(ACTIONS[b.dataset.a], 110); };
+  const stop = e => { e.preventDefault(); clearInterval(rep); rep = null; };
+  b.addEventListener("pointerdown", start); b.addEventListener("pointerup", stop); b.addEventListener("pointercancel", stop); b.addEventListener("pointerleave", stop);
+  for (const t of ["touchstart", "touchmove", "touchend"]) b.addEventListener(t, e => e.preventDefault(), { passive: false });
+});
+addEventListener("keydown", e => {
+  if (!started || over) return;
+  const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "rotr", KeyX: "rotr", KeyZ: "rotl", Space: "hard" };
+  if (e.code === "ArrowDown") { softDrop = true; e.preventDefault(); return; }
+  if (e.code === "KeyP" || e.code === "Escape") { togglePause(); return; }
+  if (map[e.code] && !paused) { ACTIONS[map[e.code]](); e.preventDefault(); }
+});
+addEventListener("keyup", e => { if (e.code === "ArrowDown") softDrop = false; });
+
+// ===== 画面遷移 =====
+function togglePause() { if (!started || over) return; paused = !paused; $("pauseModal").classList.toggle("show", paused); if (!paused) lastT = performance.now(); }
+$("pause").addEventListener("click", togglePause);
+$("resume").addEventListener("click", togglePause);
+$("pauseQuit").addEventListener("click", () => { paused = false; $("pauseModal").classList.remove("show"); started = false; board = Array.from({ length: ROWS }, () => Array(COLS).fill(null)); cur = null; $("startModal").classList.add("show"); });
+$("startBtn").addEventListener("click", () => { $("startModal").classList.remove("show"); newGame(); });
+$("retry").addEventListener("click", () => { $("overModal").classList.remove("show"); newGame(); });
+$("toTop").addEventListener("click", () => location.href = "../../");
+document.addEventListener("visibilitychange", () => { if (document.hidden && started && !over && !paused) togglePause(); });
+
+board = Array.from({ length: ROWS }, () => Array(COLS).fill(null));
+fit(); $("startModal").classList.add("show"); requestAnimationFrame(loop);
+</script>
+<script>
+// iOS Safari のダブルタップ/ピンチズーム防止（user-scalable=no は iOS では無効）
+(function () {
+  document.addEventListener("gesturestart", e => e.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", e => e.preventDefault(), { passive: false });
+  let last = 0;
+  document.addEventListener("touchend", e => {
+    const now = Date.now();
+    const interactive = e.target.closest("button, a, input, .btn, [data-tap]");
+    if (!interactive && now - last < 350) e.preventDefault();
+    last = now;
+  }, { passive: false });
+})();
+</script>
+</body>
+</html>
